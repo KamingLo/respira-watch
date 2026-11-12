@@ -1,8 +1,13 @@
 import { Officer, type IOfficer } from '../models/Officer.js';
 import { redisClient } from '../config/redis.js';
 import { AppError } from '../utils/AppError.js';
+import { getCache, setCache } from '../utils/cache.js';
 import { verifyPassword } from '../utils/password.js';
 import { signOfficerToken, type JwtOfficerPayload } from '../utils/jwt.js';
+import {
+  getOfficerProfileCacheKey,
+  invalidateOfficerCaches,
+} from './officerService.js';
 
 export interface LoginOfficerResult {
   token: string;
@@ -62,6 +67,8 @@ export const authenticateOfficerLogin = async (
     );
   }
 
+  await invalidateOfficerCaches(officerId, [officer.assignedKelurahan?.toString()]);
+
   return {
     token,
     officer: {
@@ -76,6 +83,12 @@ export const authenticateOfficerLogin = async (
 };
 
 export const getAuthenticatedOfficerProfile = async (officerId: string): Promise<IOfficer> => {
+  const cacheKey = getOfficerProfileCacheKey(officerId);
+  const cachedProfile = await getCache<IOfficer>(cacheKey);
+  if (cachedProfile) {
+    return cachedProfile;
+  }
+
   const officer = await Officer.findById(officerId).populate(
     'assignedKelurahan',
     'code name kecamatan'
@@ -84,6 +97,8 @@ export const getAuthenticatedOfficerProfile = async (officerId: string): Promise
   if (!officer) {
     throw new AppError('Data petugas tidak ditemukan.', 404);
   }
+
+  await setCache(cacheKey, officer);
 
   return officer;
 };

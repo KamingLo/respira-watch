@@ -5,10 +5,50 @@ import type { IGeoPoint } from '../models/GeoJSON.js';
 import { redisClient } from '../config/redis.js';
 import { AppError } from '../utils/AppError.js';
 import { hashPassword } from '../utils/password.js';
-import { validateGeoPoint } from './kelurahanService.js';
+import {
+  buildFilterCacheKey,
+  getCache,
+  setCache,
+  deleteCache,
+  deleteCacheByPattern,
+} from '../utils/cache.js';
+import { getKelurahanDetailCacheKey, validateGeoPoint } from './kelurahanService.js';
 
 const VALID_ROLES: OfficerRole[] = ['admin', 'field_officer', 'health_analyst'];
 const KELURAHAN_POPULATE_FIELDS = 'code name kecamatan kota provinsi centroid baselineRiskLevel';
+const OFFICER_LIST_CACHE_PREFIX = 'officers:list';
+const OFFICER_DETAIL_CACHE_PREFIX = 'officers:detail';
+
+export const getOfficerDetailCacheKey = (officerId: string): string =>
+  `${OFFICER_DETAIL_CACHE_PREFIX}:${officerId}`;
+
+export const getOfficerProfileCacheKey = (officerId: string): string =>
+  `auth:me:${officerId}`;
+
+export const invalidateOfficerCaches = async (
+  officerId?: string,
+  kelurahanIds: Array<string | undefined | null> = []
+): Promise<void> => {
+  const keysToDelete: string[] = [];
+
+  if (officerId) {
+    keysToDelete.push(
+      getOfficerDetailCacheKey(officerId),
+      getOfficerProfileCacheKey(officerId)
+    );
+  }
+
+  for (const kelId of kelurahanIds) {
+    if (kelId) {
+      keysToDelete.push(getKelurahanDetailCacheKey(kelId));
+    }
+  }
+
+  await Promise.all([
+    deleteCacheByPattern(`${OFFICER_LIST_CACHE_PREFIX}:*`),
+    ...(keysToDelete.length > 0 ? [deleteCache(...keysToDelete)] : []),
+  ]);
+};
 
 export interface CreateOfficerInput {
   name?: string;
@@ -131,10 +171,20 @@ export const createNewOfficer = async (input: CreateOfficerInput): Promise<IOffi
     throw new AppError('Gagal mengambil data petugas yang baru dibuat.', 500);
   }
 
+  await invalidateOfficerCaches(createdOfficer._id.toString(), [
+    kelurahanObjectId?.toString(),
+  ]);
+
   return populatedOfficer;
 };
 
 export const getOfficers = async (filter: ListOfficersFilter = {}): Promise<IOfficer[]> => {
+  const cacheKey = buildFilterCacheKey(OFFICER_LIST_CACHE_PREFIX, filter);
+  const cachedOfficers = await getCache<IOfficer[]>(cacheKey);
+  if (cachedOfficers) {
+    return cachedOfficers;
+  }
+
   const query: Record<string, unknown> = {};
 
   if (filter.role && VALID_ROLES.includes(filter.role as OfficerRole)) {
@@ -155,14 +205,24 @@ export const getOfficers = async (filter: ListOfficersFilter = {}): Promise<IOff
     query.$or = [{ name: regex }, { nip: regex }, { email: regex }];
   }
 
-  return Officer.find(query)
+  const officers = await Officer.find(query)
     .populate('assignedKelurahan', KELURAHAN_POPULATE_FIELDS)
     .sort({ createdAt: -1 });
+
+  await setCache(cacheKey, officers);
+
+  return officers;
 };
 
 export const getOfficerDetailById = async (officerId: string): Promise<IOfficer> => {
   if (!Types.ObjectId.isValid(officerId)) {
     throw new AppError('Format ID petugas tidak valid.', 400);
+  }
+
+  const cacheKey = getOfficerDetailCacheKey(officerId);
+  const cachedOfficer = await getCache<IOfficer>(cacheKey);
+  if (cachedOfficer) {
+    return cachedOfficer;
   }
 
   const officer = await Officer.findById(officerId).populate(
@@ -173,6 +233,8 @@ export const getOfficerDetailById = async (officerId: string): Promise<IOfficer>
   if (!officer) {
     throw new AppError('Data petugas tidak ditemukan.', 404);
   }
+
+  await setCache(cacheKey, officer);
 
   return officer;
 };
@@ -189,6 +251,8 @@ export const updateOfficerById = async (
   if (!officer) {
     throw new AppError('Data petugas tidak ditemukan.', 404);
   }
+
+  const previousKelurahanId = officer.assignedKelurahan?.toString();
 
   if (input.name !== undefined) {
     const trimmedName = input.name.trim();
@@ -297,6 +361,11 @@ export const updateOfficerById = async (
 
   await officer.save();
 
+  await invalidateOfficerCaches(officer._id.toString(), [
+    previousKelurahanId,
+    officer.assignedKelurahan?.toString(),
+  ]);
+
   const updatedOfficer = await Officer.findById(officer._id).populate(
     'assignedKelurahan',
     KELURAHAN_POPULATE_FIELDS
@@ -322,6 +391,7 @@ export const assignOfficerKelurahan = async (
     throw new AppError('Data petugas tidak ditemukan.', 404);
   }
 
+  const previousKelurahanId = officer.assignedKelurahan?.toString();
   const { assignedKelurahan, syncBaseLocation = true } = input;
 
   if (
@@ -348,6 +418,11 @@ export const assignOfficerKelurahan = async (
   }
 
   await officer.save();
+
+  await invalidateOfficerCaches(officer._id.toString(), [
+    previousKelurahanId,
+    officer.assignedKelurahan?.toString(),
+  ]);
 
   const updatedOfficer = await Officer.findById(officer._id).populate(
     'assignedKelurahan',
@@ -378,11 +453,14 @@ export const deleteOfficerById = async (
     throw new AppError('Data petugas tidak ditemukan.', 404);
   }
 
+  const previousKelurahanId = officer.assignedKelurahan?.toString();
   await officer.deleteOne();
 
   if (redisClient.status === 'ready') {
     await redisClient.del(`session:officer:${officerId}`);
   }
+
+  await invalidateOfficerCaches(officerId, [previousKelurahanId]);
 
   return { id: officerId };
 };

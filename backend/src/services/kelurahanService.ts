@@ -3,10 +3,43 @@ import { Kelurahan, type IKelurahan } from '../models/Kelurahan.js';
 import { Officer, type IOfficer } from '../models/Officer.js';
 import type { IGeoPoint, IGeoPolygon } from '../models/GeoJSON.js';
 import { AppError } from '../utils/AppError.js';
+import {
+  buildFilterCacheKey,
+  getCache,
+  setCache,
+  deleteCache,
+  deleteCacheByPattern,
+} from '../utils/cache.js';
 
 export type BaselineRiskLevel = IKelurahan['baselineRiskLevel'];
 
 const VALID_RISK_LEVELS: BaselineRiskLevel[] = ['low', 'moderate', 'high', 'critical'];
+const KELURAHAN_LIST_CACHE_PREFIX = 'kelurahans:list';
+const KELURAHAN_DETAIL_CACHE_PREFIX = 'kelurahans:detail';
+
+export const getKelurahanDetailCacheKey = (kelurahanId: string): string =>
+  `${KELURAHAN_DETAIL_CACHE_PREFIX}:${kelurahanId}`;
+
+export const invalidateKelurahanCaches = async (
+  kelurahanId?: string,
+  includeOfficerCaches = false
+): Promise<void> => {
+  const tasks: Promise<void>[] = [deleteCacheByPattern(`${KELURAHAN_LIST_CACHE_PREFIX}:*`)];
+
+  if (kelurahanId) {
+    tasks.push(deleteCache(getKelurahanDetailCacheKey(kelurahanId)));
+  }
+
+  if (includeOfficerCaches) {
+    tasks.push(
+      deleteCacheByPattern('officers:list:*'),
+      deleteCacheByPattern('officers:detail:*'),
+      deleteCacheByPattern('auth:me:*')
+    );
+  }
+
+  await Promise.all(tasks);
+};
 
 export interface CreateKelurahanInput {
   code?: string;
@@ -199,10 +232,18 @@ export const createNewKelurahan = async (input: CreateKelurahanInput): Promise<I
     baselineRiskLevel,
   });
 
+  await invalidateKelurahanCaches();
+
   return createdKelurahan;
 };
 
 export const getKelurahans = async (filter: ListKelurahansFilter = {}): Promise<IKelurahan[]> => {
+  const cacheKey = buildFilterCacheKey(KELURAHAN_LIST_CACHE_PREFIX, filter);
+  const cachedKelurahans = await getCache<IKelurahan[]>(cacheKey);
+  if (cachedKelurahans) {
+    return cachedKelurahans;
+  }
+
   const query: Record<string, unknown> = {};
 
   if (filter.kecamatan && filter.kecamatan.trim() !== '') {
@@ -229,7 +270,10 @@ export const getKelurahans = async (filter: ListKelurahansFilter = {}): Promise<
     query.$or = [{ code: regex }, { name: regex }, { kecamatan: regex }, { kota: regex }];
   }
 
-  return Kelurahan.find(query).sort({ name: 1 });
+  const kelurahans = await Kelurahan.find(query).sort({ name: 1 });
+  await setCache(cacheKey, kelurahans);
+
+  return kelurahans;
 };
 
 export const getKelurahanDetailById = async (
@@ -237,6 +281,12 @@ export const getKelurahanDetailById = async (
 ): Promise<KelurahanDetailWithOfficers> => {
   if (!Types.ObjectId.isValid(kelurahanId)) {
     throw new AppError('Format ID kelurahan tidak valid.', 400);
+  }
+
+  const cacheKey = getKelurahanDetailCacheKey(kelurahanId);
+  const cachedDetail = await getCache<KelurahanDetailWithOfficers>(cacheKey);
+  if (cachedDetail) {
+    return cachedDetail;
   }
 
   const kelurahan = await Kelurahan.findById(kelurahanId);
@@ -250,10 +300,14 @@ export const getKelurahanDetailById = async (
     .select('name nip email phone role isActive baseLocation lastLoginAt')
     .sort({ name: 1 });
 
-  return {
+  const detailResult: KelurahanDetailWithOfficers = {
     ...kelurahan.toObject(),
     assignedOfficers,
   };
+
+  await setCache(cacheKey, detailResult);
+
+  return detailResult;
 };
 
 export const updateKelurahanById = async (
@@ -363,6 +417,8 @@ export const updateKelurahanById = async (
   }
 
   await kelurahan.save();
+  await invalidateKelurahanCaches(kelurahan._id.toString(), true);
+
   return kelurahan;
 };
 
@@ -387,7 +443,9 @@ export const deleteKelurahanById = async (kelurahanId: string): Promise<{ id: st
     );
   }
 
+  const deletedId = kelurahan._id.toString();
   await kelurahan.deleteOne();
+  await invalidateKelurahanCaches(deletedId);
 
-  return { id: kelurahan._id.toString() };
+  return { id: deletedId };
 };
