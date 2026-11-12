@@ -8,6 +8,7 @@ interface ButtonProps {
   disabled?: boolean;
   fullWidth?: boolean;
   onClick?: () => void;
+  className?: string;
 }
 
 export default function Button({
@@ -18,9 +19,10 @@ export default function Button({
   disabled = false,
   fullWidth = false,
   onClick,
+  className = "",
 }: ButtonProps) {
   const baseStyles =
-    "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50";
 
   const variants = {
     primary: "bg-green-700 text-white hover:bg-green-800",
@@ -43,7 +45,7 @@ export default function Button({
       onClick={onClick}
       className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${
         fullWidth ? "w-full" : ""
-      }`}
+      } ${className}`}
     >
       {children}
     </button>
