@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "RespiraWatch",
-  description: "Sistem pemantauan kesehatan berbasis WebGIS",
+  description: "WebGIS Health Monitoring System",
 };
 
 export default function RootLayout({
