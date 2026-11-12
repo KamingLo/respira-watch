@@ -1,0 +1,34 @@
+info:
+  name: Update officer
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: http://localhost:4000/officers/6af5331cda87e443aea245dc
+  headers:
+    - name: Authorization
+      value: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJvZmZpY2VySWQiOiI2YWY1MzMxYmRhODdlNDQzYWVhMjQ1ZGEiLCJlbWFpbCI6ImFkbWluQHJlc3BpcmF3YXRjaC5pZCIsInJvbGUiOiJhZG1pbiIsIm5pcCI6IjE5OTAwMTAxMjAyMDAxMTAwMSIsInN1YiI6IjZhZjUzMzFiZGE4N2U0NDNhZWEyNDVkYSIsImlhdCI6MTc5NDQ1NTA4NCwiZXhwIjoxNzk0NDgzODg0fQ.OyUqgck_hNpdUtPfniJVIoOGK9_djfdZqpdxln-6z1A
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Budi Santoso (Koordinator Lapangan)",
+        "nip": "198503152010121005",
+        "email": "budi.santoso@email.com",
+        "phone": "081234567899",
+        "role": "field_officer",
+        "assignedKelurahan": "64b1f9b3e4b0a1a2b3c4d5e6",
+        "baseLocation": {
+          "type": "Point",
+          "coordinates": [106.845599, -6.208763]
+        },
+        "isActive": true
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

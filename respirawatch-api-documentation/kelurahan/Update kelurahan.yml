@@ -1,0 +1,30 @@
+info:
+  name: Update kelurahan
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: http://localhost:4000/kelurahans/64b1f9b3e4b0a1a2b3c4d5e6
+  headers:
+    - name: Authorization
+      value: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJvZmZpY2VySWQiOiI2YWY1MzMxYmRhODdlNDQzYWVhMjQ1ZGEiLCJlbWFpbCI6ImFkbWluQHJlc3BpcmF3YXRjaC5pZCIsInJvbGUiOiJhZG1pbiIsIm5pcCI6IjE5OTAwMTAxMjAyMDAxMTAwMSIsInN1YiI6IjZhZjUzMzFiZGE4N2U0NDNhZWEyNDVkYSIsImlhdCI6MTc5NDQ1NTA4NCwiZXhwIjoxNzk0NDgzODg0fQ.OyUqgck_hNpdUtPfniJVIoOGK9_djfdZqpdxln-6z1A
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Tebet Timur",
+        "kecamatan": "Tebet",
+        "kota": "Jakarta Selatan",
+        "provinsi": "DKI Jakarta",
+        "population": 22100,
+        "areaSqKm": 1.39,
+        "baselineRiskLevel": "high"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

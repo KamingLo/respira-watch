@@ -1,0 +1,18 @@
+info:
+  name: All Kelurahans
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://localhost:4000/kelurahans/
+  headers:
+    - name: Authorization
+      value: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJvZmZpY2VySWQiOiI2YWY1MzMxYmRhODdlNDQzYWVhMjQ1ZGEiLCJlbWFpbCI6ImFkbWluQHJlc3BpcmF3YXRjaC5pZCIsInJvbGUiOiJhZG1pbiIsIm5pcCI6IjE5OTAwMTAxMjAyMDAxMTAwMSIsInN1YiI6IjZhZjUzMzFiZGE4N2U0NDNhZWEyNDVkYSIsImlhdCI6MTc5NDQ1NTA4NCwiZXhwIjoxNzk0NDgzODg0fQ.OyUqgck_hNpdUtPfniJVIoOGK9_djfdZqpdxln-6z1A
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

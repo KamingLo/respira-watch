@@ -20,7 +20,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
   });
 });
 
-app.use('/api', apiRoutes);
+app.use('/', apiRoutes);
 
 const bootstrap = async (): Promise<void> => {
   await connectDatabase();
