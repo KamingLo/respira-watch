@@ -36,7 +36,7 @@ export default function BottomNavigation() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-3 left-1/2 z-50 w-[calc(100%-2rem)] max-w-[480px] -translate-x-1/2 rounded-full border-2 border-[#B5D2C3] bg-white p-2 shadow-[0_8px_25px_rgba(0,80,45,0.12)] md:bottom-6 md:max-w-[560px] md:p-2.5">
+    <nav className="fixed bottom-3 left-1/2 z-[1100] w-[calc(100%-2rem)] max-w-[480px] -translate-x-1/2 rounded-full border-2 border-[#B5D2C3] bg-white p-2 shadow-[0_8px_25px_rgba(0,80,45,0.12)] md:bottom-6 md:max-w-[560px] md:p-2.5">
 
       <div className="flex h-14 items-center gap-1 md:h-[68px] md:gap-2">
 

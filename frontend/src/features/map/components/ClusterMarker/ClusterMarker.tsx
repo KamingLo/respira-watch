@@ -1,51 +1,86 @@
 "use client";
 
-interface MapFilterProps {
+import {
+  CircleMarker,
+  Popup,
+  Tooltip,
+} from "react-leaflet";
+
+interface ClusterMarkerProps {
   selectedCategories: string[];
-  onChange: (categories: string[]) => void;
 }
 
-const categories = [
-  { label: "ISPA", color: "#047857" },
-  { label: "Diare", color: "#F59E0B" },
+interface ClusterData {
+  id: number;
+  category: "ISPA" | "Diare";
+  position: [number, number];
+  count: number;
+  location: string;
+}
+
+const clusterData: ClusterData[] = [
+  {
+    id: 1,
+    category: "ISPA",
+    position: [-3.344, 114.591],
+    count: 8,
+    location: "Kelayan Selatan",
+  },
+  {
+    id: 2,
+    category: "Diare",
+    position: [-3.346, 114.593],
+    count: 5,
+    location: "Kelayan Tengah",
+  },
+  {
+    id: 3,
+    category: "ISPA",
+    position: [-3.342, 114.589],
+    count: 12,
+    location: "Kelayan Barat",
+  },
 ];
 
-export default function MapFilter({
+export default function ClusterMarker({
   selectedCategories,
-  onChange,
-}: MapFilterProps) {
-  function toggleCategory(category: string) {
-    const updated = selectedCategories.includes(category)
-      ? selectedCategories.filter((item) => item !== category)
-      : [...selectedCategories, category];
-
-    onChange(updated);
-  }
+}: ClusterMarkerProps) {
+  const filteredClusters = clusterData.filter((cluster) =>
+    selectedCategories.includes(cluster.category)
+  );
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {categories.map((category) => {
-        const active = selectedCategories.includes(category.label);
+    <>
+      {filteredClusters.map((cluster) => {
+        const markerColor =
+          cluster.category === "ISPA" ? "#047857" : "#F59E0B";
 
         return (
-          <button
-            key={category.label}
-            type="button"
-            onClick={() => toggleCategory(category.label)}
-            className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-              active
-                ? "border-green-700 bg-green-50 text-green-800"
-                : "border-gray-200 bg-white text-gray-500"
-            }`}
+          <CircleMarker
+            key={cluster.id}
+            center={cluster.position}
+            radius={Math.min(10 + cluster.count, 22)}
+            pathOptions={{
+              color: markerColor,
+              fillColor: markerColor,
+              fillOpacity: 0.65,
+              weight: 2,
+            }}
           >
-            <span
-              className="mr-2 inline-block h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: category.color }}
-            />
-            {category.label}
-          </button>
+            <Tooltip direction="top">
+              {cluster.category} ({cluster.count} laporan)
+            </Tooltip>
+
+            <Popup>
+              <div>
+                <strong>{cluster.category}</strong>
+                <p>{cluster.location}</p>
+                <p>{cluster.count} laporan gejala</p>
+              </div>
+            </Popup>
+          </CircleMarker>
         );
       })}
-    </div>
+    </>
   );
 }
