@@ -20,12 +20,27 @@ redisClient.on('error', (err: Error) => {
   console.error('[Redis] Error koneksi Redis:', err.message);
 });
 
+let connectingPromise: Promise<void> | null = null;
+
 export const connectRedis = async (): Promise<void> => {
-  try {
-    if (redisClient.status === 'wait') {
-      await redisClient.connect();
-    }
-  } catch (error) {
-    console.warn('[Redis] Gagal melakukan koneksi awal Redis, berjalan tanpa cache aktif:', error);
+  if (redisClient.status === 'ready' || redisClient.status === 'connect') {
+    return;
+  }
+
+  if (connectingPromise) {
+    return connectingPromise;
+  }
+
+  if (redisClient.status === 'wait') {
+    connectingPromise = redisClient
+      .connect()
+      .catch((error: unknown) => {
+        console.warn('[Redis] Gagal melakukan koneksi awal Redis, berjalan tanpa cache aktif:', error);
+      })
+      .finally(() => {
+        connectingPromise = null;
+      });
+
+    await connectingPromise;
   }
 };

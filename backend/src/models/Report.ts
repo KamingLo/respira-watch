@@ -1,7 +1,20 @@
 import { Schema, model, type Document, type Types } from 'mongoose';
 import { GeoPointSchema, type IGeoPoint } from './GeoJSON.js';
 
-export type ReportCategory = 'respiratory_symptom' | 'air_pollution_source' | 'both';
+export type CitizenReportCategory = 'ispa' | 'diare';
+export type LegacyReportCategory = 'respiratory_symptom' | 'air_pollution_source' | 'both';
+export type ReportCategory = CitizenReportCategory | LegacyReportCategory;
+
+export type ReportSeverity =
+  | 'ringan'
+  | 'sedang'
+  | 'berat'
+  | 'kritis'
+  | 'mild'
+  | 'moderate'
+  | 'severe'
+  | 'critical';
+
 export type ReportStatus = 'pending' | 'verified' | 'in_progress' | 'resolved' | 'rejected';
 
 export interface IReport extends Document {
@@ -9,10 +22,14 @@ export interface IReport extends Document {
   reporterContact?: string;
   category: ReportCategory;
   symptoms: string[];
+  sickCount: number;
+  age: number;
   pollutionType?: 'open_burning' | 'industrial_smoke' | 'vehicle_emission' | 'dust' | 'odor' | 'other';
-  severity: 'mild' | 'moderate' | 'severe' | 'critical';
+  severity: ReportSeverity;
+  deviceHash: string;
   description: string;
   photoUrls: string[];
+  geom: IGeoPoint;
   location: IGeoPoint;
   address?: string;
   kelurahanId?: Types.ObjectId;
@@ -28,25 +45,40 @@ export interface IReport extends Document {
 
 const ReportSchema = new Schema<IReport>(
   {
-    reporterName: { type: String, required: true, trim: true },
+    reporterName: { type: String, required: true, default: 'Warga Anonim', trim: true },
     reporterContact: { type: String, trim: true },
     category: {
       type: String,
-      enum: ['respiratory_symptom', 'air_pollution_source', 'both'],
+      enum: ['ispa', 'diare', 'respiratory_symptom', 'air_pollution_source', 'both'],
       required: true,
+      index: true,
     },
-    symptoms: { type: [String], default: [] },
+    symptoms: { type: [String], required: true, default: [] },
+    sickCount: { type: Number, required: true, default: 1, min: 1 },
+    age: { type: Number, required: true, default: 0, min: 0, max: 120 },
     pollutionType: {
       type: String,
       enum: ['open_burning', 'industrial_smoke', 'vehicle_emission', 'dust', 'odor', 'other'],
     },
     severity: {
       type: String,
-      enum: ['mild', 'moderate', 'severe', 'critical'],
-      default: 'moderate',
+      enum: ['ringan', 'sedang', 'berat', 'kritis', 'mild', 'moderate', 'severe', 'critical'],
+      required: true,
+      default: 'sedang',
+      index: true,
     },
-    description: { type: String, required: true, trim: true },
+    deviceHash: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+    description: { type: String, default: '', trim: true },
     photoUrls: { type: [String], default: [] },
+    geom: {
+      type: GeoPointSchema,
+      required: true,
+    },
     location: {
       type: GeoPointSchema,
       required: true,
@@ -68,6 +100,7 @@ const ReportSchema = new Schema<IReport>(
   { timestamps: true }
 );
 
+ReportSchema.index({ geom: '2dsphere' });
 ReportSchema.index({ location: '2dsphere' });
 
 export const Report = model<IReport>('Report', ReportSchema);

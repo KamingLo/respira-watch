@@ -18,9 +18,11 @@
     "cors": "^2.8.6",
     "dotenv": "^18.0.10",
     "express": "^5.3.0",
+    "express-rate-limit": "^8.7.4",
     "ioredis": "^6.0.0",
     "jose": "^6.2.17",
-    "mongoose": "^9.12.1"
+    "mongoose": "^9.12.1",
+    "rate-limit-redis": "^6.0.2"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
