@@ -9,15 +9,32 @@ import {
   type ClusterLegacyRiskLevel,
   type ClusterRiskColor,
   type ClusterRiskStatus,
+  type ClusterStatus,
   type ICluster,
 } from '../models/Cluster.js';
 import { Report, type CitizenReportCategory } from '../models/Report.js';
 import { GridCell } from '../models/GridCell.js';
 import { AqiReading } from '../models/AqiReading.js';
 import { Kelurahan } from '../models/Kelurahan.js';
+import { Officer } from '../models/Officer.js';
 import type { IGeoPoint, IGeoPolygon } from '../models/GeoJSON.js';
 import { calculateDistanceMeters, readGridAqiFromRedis } from './aqiService.js';
-import { delCache } from '../utils/cache.js';
+import { invalidateClusterSummaryCache } from './aiService.js';
+import {
+  buildFilterCacheKey,
+  getCache,
+  setCache,
+  deleteCache,
+  delCache,
+} from '../utils/cache.js';
+import { AppError } from '../utils/AppError.js';
+import type { JwtOfficerPayload } from '../utils/jwt.js';
+import {
+  emitClusterDetected,
+  emitClusterUpdated,
+  SOCKET_EVENTS,
+  type SocketClusterItem,
+} from '../config/socket.js';
 
 export const CLUSTER_TIME_WINDOW_HOURS = 72;
 export const DBSCAN_MAX_DISTANCE_KM = 0.5;
@@ -25,6 +42,12 @@ export const DBSCAN_MAX_DISTANCE_METERS = DBSCAN_MAX_DISTANCE_KM * 1000;
 export const DBSCAN_MIN_POINTS = 5;
 export const CLUSTER_CATEGORIES: readonly ClusterCategory[] = ['ispa', 'diare'] as const;
 export const MAP_CACHE_PATTERNS: readonly string[] = ['map_cache:*', 'map:public:*'] as const;
+
+export const CLUSTER_LIST_CACHE_PREFIX = 'clusters:list';
+export const CLUSTER_LIST_CACHE_PATTERN = `${CLUSTER_LIST_CACHE_PREFIX}:*`;
+export const CLUSTER_DETAIL_CACHE_PREFIX = 'clusters:detail';
+export const CLUSTER_DETAIL_CACHE_PATTERN = `${CLUSTER_DETAIL_CACHE_PREFIX}:*`;
+export const CLUSTER_CACHE_TTL_SECONDS = 300;
 
 export interface LeanClusterReportDoc {
   _id: Types.ObjectId;
@@ -409,8 +432,96 @@ export const buildDeterministicClusterCode = (
   return `CLU-${category.toUpperCase()}-${latPrefix}${latToken}-${lngPrefix}${lngToken}`;
 };
 
+export const buildClusterDetailCacheKey = (idOrCode: string): string =>
+  `${CLUSTER_DETAIL_CACHE_PREFIX}:${idOrCode.trim().toLowerCase()}`;
+
+export const toSocketClusterItem = (
+  cluster: ICluster | Record<string, unknown> | unknown
+): SocketClusterItem => {
+  const raw = (cluster ?? {}) as Record<string, unknown>;
+  const rawId = raw._id ? String(raw._id) : String(raw.id ?? '');
+  const rawKelurahan = raw.kelurahanId as
+    | { _id?: Types.ObjectId }
+    | Types.ObjectId
+    | string
+    | undefined;
+  const kelurahanIdStr =
+    rawKelurahan && typeof rawKelurahan === 'object' && '_id' in rawKelurahan && rawKelurahan._id
+      ? rawKelurahan._id.toString()
+      : rawKelurahan
+        ? String(rawKelurahan)
+        : undefined;
+
+  const rawOfficer = raw.assignedOfficerId as
+    | { _id?: Types.ObjectId }
+    | Types.ObjectId
+    | string
+    | undefined;
+  const assignedOfficerIdStr =
+    rawOfficer && typeof rawOfficer === 'object' && '_id' in rawOfficer && rawOfficer._id
+      ? rawOfficer._id.toString()
+      : rawOfficer
+        ? String(rawOfficer)
+        : undefined;
+
+  const firstDetectedAt =
+    raw.firstDetectedAt instanceof Date
+      ? raw.firstDetectedAt.toISOString()
+      : new Date(String(raw.firstDetectedAt ?? Date.now())).toISOString();
+  const lastUpdatedAt =
+    raw.lastUpdatedAt instanceof Date
+      ? raw.lastUpdatedAt.toISOString()
+      : new Date(String(raw.lastUpdatedAt ?? Date.now())).toISOString();
+
+  return {
+    id: rawId,
+    clusterCode: String(raw.clusterCode ?? ''),
+    category: (raw.category as ClusterCategory) ?? 'ispa',
+    ...(kelurahanIdStr ? { kelurahanId: kelurahanIdStr } : {}),
+    center: raw.center as IGeoPoint,
+    ...(raw.boundary ? { boundary: raw.boundary as IGeoPolygon } : {}),
+    radiusMeters: Number(raw.radiusMeters ?? 100),
+    reportCount: Number(raw.reportCount ?? 1),
+    totalSickCount: Number(raw.totalSickCount ?? 1),
+    ...(typeof raw.averageAqi === 'number' ? { averageAqi: raw.averageAqi } : {}),
+    dominantSymptoms: Array.isArray(raw.dominantSymptoms)
+      ? (raw.dominantSymptoms as string[])
+      : [],
+    riskStatus: (raw.riskStatus as ClusterRiskStatus) ?? 'Waspada',
+    riskColor: (raw.riskColor as ClusterRiskColor) ?? 'Kuning',
+    colorHex: String(raw.colorHex ?? '#EAB308'),
+    riskLevel: (raw.riskLevel as ClusterLegacyRiskLevel) ?? 'moderate',
+    status: (raw.status as ClusterStatus) ?? 'active',
+    ...(assignedOfficerIdStr ? { assignedOfficerId: assignedOfficerIdStr } : {}),
+    firstDetectedAt,
+    lastUpdatedAt,
+  };
+};
+
+export const invalidateClusterCaches = async (
+  clusterId?: string,
+  clusterCode?: string
+): Promise<void> => {
+  const detailKeysToDelete: string[] = [];
+  if (clusterId) {
+    detailKeysToDelete.push(buildClusterDetailCacheKey(clusterId));
+  }
+  if (clusterCode) {
+    detailKeysToDelete.push(buildClusterDetailCacheKey(clusterCode));
+  }
+
+  await Promise.all([
+    detailKeysToDelete.length > 0
+      ? deleteCache(...detailKeysToDelete)
+      : delCache(CLUSTER_DETAIL_CACHE_PATTERN),
+    invalidateClusterSummaryCache(clusterId, clusterCode),
+    delCache(CLUSTER_LIST_CACHE_PATTERN),
+    ...MAP_CACHE_PATTERNS.map((pattern) => delCache(pattern)),
+  ]);
+};
+
 export const invalidateMapCacheAfterClusterUpsert = async (): Promise<void> => {
-  await Promise.all(MAP_CACHE_PATTERNS.map((pattern) => delCache(pattern)));
+  await invalidateClusterCaches();
 };
 
 export const detectClusters = async (): Promise<DetectClustersResult> => {
@@ -715,6 +826,18 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
 
     if (hasDatabaseChanges) {
       await invalidateMapCacheAfterClusterUpsert();
+
+      if (upsertedClusters.length > 0) {
+        emitClusterDetected({
+          event: SOCKET_EVENTS.CLUSTER_DETECTED,
+          clustersDetected: upsertedClusters.length,
+          clustersByCategory,
+          upsertedClusterIds: upsertedClusters.map((c) => c._id.toString()),
+          resolvedStaleCount,
+          clusters: upsertedClusters.map((c) => toSocketClusterItem(c)),
+          detectedAt: now.toISOString(),
+        });
+      }
     }
 
     return {
@@ -743,50 +866,277 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
 export interface ClusterQueryFilter {
   category?: string;
   kategori?: string;
+  level?: string;
+  riskLevel?: string;
   riskStatus?: string;
   status?: string;
   kelurahanId?: string;
 }
 
+export interface UpdateClusterStatusInput {
+  status?: string;
+  assignedOfficerId?: string | null;
+}
+
+const RISK_STATUS_CANONICAL_MAP: Record<string, ClusterRiskStatus> = {
+  waspada: 'Waspada',
+  siaga: 'Siaga',
+  prioritas: 'Prioritas',
+};
+
+const VALID_LEGACY_RISK_LEVELS: readonly ClusterLegacyRiskLevel[] = [
+  'low',
+  'moderate',
+  'high',
+  'outbreak',
+] as const;
+
+const VALID_CLUSTER_STATUSES: readonly ClusterStatus[] = [
+  'active',
+  'monitoring',
+  'resolved',
+] as const;
+
 export const listClusters = async (filter: ClusterQueryFilter = {}) => {
   const query: Record<string, unknown> = {};
 
   const category = (filter.category ?? filter.kategori ?? '').trim().toLowerCase();
-  if (category === 'ispa' || category === 'diare') {
+  if (category) {
+    if (category !== 'ispa' && category !== 'diare') {
+      throw new AppError(
+        "Filter kategori klaster tidak valid. Gunakan 'ispa' atau 'diare'.",
+        400
+      );
+    }
     query.category = category;
   }
 
-  const riskStatus = (filter.riskStatus ?? '').trim();
-  if (['Waspada', 'Siaga', 'Prioritas'].includes(riskStatus)) {
-    query.riskStatus = riskStatus;
+  const rawLevel = (
+    filter.level ??
+    filter.riskLevel ??
+    filter.riskStatus ??
+    ''
+  )
+    .trim()
+    .toLowerCase();
+
+  let normalizedLevelCacheToken: string | undefined;
+  if (rawLevel) {
+    if (RISK_STATUS_CANONICAL_MAP[rawLevel]) {
+      query.riskStatus = RISK_STATUS_CANONICAL_MAP[rawLevel];
+      normalizedLevelCacheToken = rawLevel;
+    } else if (
+      VALID_LEGACY_RISK_LEVELS.includes(rawLevel as ClusterLegacyRiskLevel)
+    ) {
+      query.riskLevel = rawLevel as ClusterLegacyRiskLevel;
+      normalizedLevelCacheToken = rawLevel;
+    } else {
+      throw new AppError(
+        "Filter level/risiko klaster tidak valid. Gunakan 'Waspada', 'Siaga', 'Prioritas' atau 'low', 'moderate', 'high', 'outbreak'.",
+        400
+      );
+    }
   }
 
-  const status = (filter.status ?? '').trim().toLowerCase();
-  if (['active', 'monitoring', 'resolved'].includes(status)) {
-    query.status = status;
-  } else if (!filter.status) {
+  const rawStatus = (filter.status ?? '').trim().toLowerCase();
+  let normalizedStatusCacheToken = 'default_active_monitoring';
+
+  if (rawStatus) {
+    if (rawStatus === 'all') {
+      normalizedStatusCacheToken = 'all';
+    } else if (VALID_CLUSTER_STATUSES.includes(rawStatus as ClusterStatus)) {
+      query.status = rawStatus as ClusterStatus;
+      normalizedStatusCacheToken = rawStatus;
+    } else {
+      throw new AppError(
+        "Filter status klaster tidak valid. Gunakan 'active', 'monitoring', 'resolved', atau 'all'.",
+        400
+      );
+    }
+  } else {
     query.status = { $in: ['active', 'monitoring'] };
   }
 
-  if (filter.kelurahanId && Types.ObjectId.isValid(filter.kelurahanId.trim())) {
-    query.kelurahanId = new Types.ObjectId(filter.kelurahanId.trim());
+  let normalizedKelurahanId: string | undefined;
+  if (filter.kelurahanId && filter.kelurahanId.trim() !== '') {
+    const trimmedKel = filter.kelurahanId.trim();
+    if (!Types.ObjectId.isValid(trimmedKel)) {
+      throw new AppError('Format parameter kelurahanId tidak valid.', 400);
+    }
+    query.kelurahanId = new Types.ObjectId(trimmedKel);
+    normalizedKelurahanId = trimmedKel;
   }
 
-  return Cluster.find(query)
+  const cacheKey = buildFilterCacheKey(CLUSTER_LIST_CACHE_PREFIX, {
+    category: category || undefined,
+    level: normalizedLevelCacheToken,
+    status: normalizedStatusCacheToken,
+    kelurahanId: normalizedKelurahanId,
+  });
+
+  const cachedClusters = await getCache<unknown[]>(cacheKey);
+  if (cachedClusters) {
+    return cachedClusters;
+  }
+
+  const clusters = await Cluster.find(query)
     .populate('kelurahanId', 'code name kecamatan kota provinsi')
     .populate('assignedOfficerId', 'name email role phone')
     .sort({ lastUpdatedAt: -1 })
     .lean();
+
+  await setCache(cacheKey, clusters, CLUSTER_CACHE_TTL_SECONDS);
+
+  return clusters;
 };
 
 export const getClusterByIdOrCode = async (idOrCode: string) => {
   const trimmed = idOrCode.trim();
+  const requestedCacheKey = buildClusterDetailCacheKey(trimmed);
+
+  const cachedCluster = await getCache<Record<string, unknown>>(requestedCacheKey);
+  if (cachedCluster) {
+    return cachedCluster;
+  }
+
   const query = Types.ObjectId.isValid(trimmed)
     ? { _id: new Types.ObjectId(trimmed) }
     : { clusterCode: trimmed.toUpperCase() };
 
-  return Cluster.findOne(query)
+  const cluster = await Cluster.findOne(query)
     .populate('kelurahanId', 'code name kecamatan kota provinsi')
     .populate('assignedOfficerId', 'name email role phone')
     .lean();
+
+  if (!cluster) {
+    return null;
+  }
+
+  const idCacheKey = buildClusterDetailCacheKey(cluster._id.toString());
+  const codeCacheKey = buildClusterDetailCacheKey(cluster.clusterCode);
+
+  await Promise.all([
+    setCache(idCacheKey, cluster, CLUSTER_CACHE_TTL_SECONDS),
+    idCacheKey !== codeCacheKey
+      ? setCache(codeCacheKey, cluster, CLUSTER_CACHE_TTL_SECONDS)
+      : Promise.resolve(),
+  ]);
+
+  return cluster;
+};
+
+export const updateClusterStatus = async (
+  idOrCode: string,
+  input: UpdateClusterStatusInput,
+  officer?: JwtOfficerPayload
+) => {
+  const trimmed = idOrCode.trim();
+  if (!trimmed) {
+    throw new AppError('Parameter ID atau kode klaster wajib disertakan.', 400);
+  }
+
+  const rawStatus = (input.status ?? '').toString().trim().toLowerCase();
+  if (!VALID_CLUSTER_STATUSES.includes(rawStatus as ClusterStatus)) {
+    throw new AppError(
+      `Status penanganan klaster tidak valid. Pilihan yang diperbolehkan: ${VALID_CLUSTER_STATUSES.join(', ')}.`,
+      400
+    );
+  }
+  const nextStatus = rawStatus as ClusterStatus;
+
+  const lookupQuery = Types.ObjectId.isValid(trimmed)
+    ? { _id: new Types.ObjectId(trimmed) }
+    : { clusterCode: trimmed.toUpperCase() };
+
+  const existingCluster = await Cluster.findOne(lookupQuery);
+  if (!existingCluster) {
+    throw new AppError('Data klaster tidak ditemukan.', 404);
+  }
+
+  const previousStatus: ClusterStatus = existingCluster.status;
+  existingCluster.status = nextStatus;
+  existingCluster.lastUpdatedAt = new Date();
+
+  if (input.assignedOfficerId !== undefined) {
+    if (input.assignedOfficerId === null || String(input.assignedOfficerId).trim() === '') {
+      existingCluster.set('assignedOfficerId', undefined);
+    } else {
+      const targetOfficerId = String(input.assignedOfficerId).trim();
+      if (!Types.ObjectId.isValid(targetOfficerId)) {
+        throw new AppError('Format assignedOfficerId tidak valid.', 400);
+      }
+      const officerExists = await Officer.findById(targetOfficerId).select('_id').lean();
+      if (!officerExists) {
+        throw new AppError('Petugas yang ditugaskan tidak ditemukan.', 404);
+      }
+      existingCluster.assignedOfficerId = new Types.ObjectId(targetOfficerId);
+    }
+  } else if (
+    !existingCluster.assignedOfficerId &&
+    officer?.officerId &&
+    Types.ObjectId.isValid(officer.officerId)
+  ) {
+    existingCluster.assignedOfficerId = new Types.ObjectId(officer.officerId);
+  }
+
+  await existingCluster.save();
+
+  if (existingCluster.reportIds && existingCluster.reportIds.length > 0) {
+    const mappedReportStatus =
+      nextStatus === 'resolved'
+        ? 'resolved'
+        : nextStatus === 'monitoring'
+          ? 'in_progress'
+          : undefined;
+
+    if (mappedReportStatus) {
+      await Report.updateMany(
+        {
+          _id: { $in: existingCluster.reportIds },
+          status: { $ne: 'rejected' },
+        },
+        {
+          $set: { status: mappedReportStatus },
+        }
+      );
+    }
+  }
+
+  const clusterIdStr = existingCluster._id.toString();
+  const clusterCodeStr = existingCluster.clusterCode;
+
+  await invalidateClusterCaches(clusterIdStr, clusterCodeStr);
+
+  const populatedCluster = await Cluster.findById(existingCluster._id)
+    .populate('kelurahanId', 'code name kecamatan kota provinsi')
+    .populate('assignedOfficerId', 'name email role phone')
+    .lean();
+
+  const finalCluster = populatedCluster ?? existingCluster.toObject();
+
+  emitClusterUpdated({
+    event: SOCKET_EVENTS.CLUSTER_UPDATED,
+    clusterId: clusterIdStr,
+    clusterCode: clusterCodeStr,
+    previousStatus,
+    status: nextStatus,
+    riskStatus: existingCluster.riskStatus,
+    riskLevel: existingCluster.riskLevel,
+    ...(existingCluster.assignedOfficerId
+      ? { assignedOfficerId: existingCluster.assignedOfficerId.toString() }
+      : {}),
+    ...(officer
+      ? {
+          updatedBy: {
+            officerId: officer.officerId,
+            email: officer.email,
+            role: officer.role,
+          },
+        }
+      : {}),
+    cluster: toSocketClusterItem(finalCluster),
+    updatedAt: existingCluster.lastUpdatedAt.toISOString(),
+  });
+
+  return finalCluster;
 };

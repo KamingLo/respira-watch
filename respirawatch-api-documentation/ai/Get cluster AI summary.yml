@@ -1,0 +1,29 @@
+info:
+  name: Get cluster AI summary
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: http://localhost:4000/api/clusters/CLU-ISPA-S06210-E106845/summary
+  params:
+    - name: refresh
+      value: "false"
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # GET /api/clusters/:id/summary — Ringkasan Klaster AI & Statistik Faktual Database
+
+  Menghasilkan ringkasan eksekutif, korelasi kualitas udara, dan rekomendasi tindakan lapangan untuk satu klaster penyakit (`ObjectId` atau `clusterCode`).
+
+  ## Prinsip Utama
+  1. **Zero Numeric Hallucination**: Objek `statistics` (`reportCount`, `totalSickCount`, `averageAqi`, `severityDistribution`, `ageStatistics`, `radiusMeters`) diambil dan dihitung **100% dari database MongoDB**, lalu disuntikkan ke dalam prompt Gemini hanya sebagai referensi fakta.
+  2. **Strategic Redis Caching (TTL 12-24 Jam)**: Hasil ringkasan di-cache di Redis dengan key `clusters:summary:<cluster_id>` dan `clusters:summary:<cluster_code>` selama 12 jam (`43200` detik).
+  3. **Auto Cache Invalidation (Terintegrasi Alur 4)**: Ketika status klaster diubah melalui `PATCH /api/clusters/:id` atau ketika DBSCAN memperbarui klaster, cache `clusters:summary:*` otomatis dihapus agar Dasbor Petugas tidak menampilkan ringkasan basi.

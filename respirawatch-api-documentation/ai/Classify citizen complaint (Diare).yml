@@ -1,0 +1,26 @@
+info:
+  name: Classify citizen complaint (Diare)
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: http://localhost:4000/api/ai/classify
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "keluhan": "Air sumur warga agak keruh setelah banjir kemarin, hari ini saya mengalami BAB cair sudah 5 kali disertai mulas, mual, dan badan terasa lemas.",
+        "usia": 32,
+        "jumlah_sakit": 1
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

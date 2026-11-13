@@ -1,0 +1,45 @@
+info:
+  name: Classify citizen complaint (ISPA)
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://localhost:4000/api/ai/classify
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "text": "Sejak kemarin asap pembakaran sampah tebal sekali di dekat rumah, sekarang 2 anak saya mengalami batuk kering terus-menerus, sakit tenggorokan, dan mulai sesak napas.",
+        "usia": 8,
+        "jumlah_sakit": 2
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # POST /api/ai/classify — Klasifikasi Teks Bebas Warga (Google Gemini AI)
+
+  Mengekstrak teks keluhan bebas warga menjadi struktur JSON baku (`category`/`kategori`, `symptoms`/`gejala`, `severity`/`tingkat_keparahan`, `sickCount`/`jumlah_sakit`) yang siap dikirim ke `POST /api/reports`.
+
+  ## Fitur Keamanan & Keandalan
+  1. **Prompt Injection Defense**: Menolak input yang mengandung upaya manipulasi instruksi sistem (`PROMPT_INJECTION_DETECTED`) dan mengisolasi input di dalam tag `<citizen_complaint_text>`.
+  2. **Strict JSON Output & Validation**: Memaksa Gemini mengembalikan `application/json` sesuai `responseSchema` dan memvalidasi via `JSON.parse` + pengecekan enum ketat.
+  3. **Safe Heuristic Fallback**: Jika Gemini berhalusinasi format JSON, rate-limited (`429`), atau timeout (`504`), sistem otomatis beralih ke klasifikasi kamus medis deterministik (`meta.usedFallback: true`, `meta.provider: "heuristic_fallback"`), kecuali parameter `?strict=true` diaktifkan.
+
+  ## Skema Error Handling Gemini API
+  | HTTP Status | Kode Error (`fallbackErrorCode`) | Penyebab | Penanganan Default vs `?strict=true` |
+  | :--- | :--- | :--- | :--- |
+  | `400 Bad Request` | `PROMPT_INJECTION_DETECTED` / `INVALID_COMPLAINT_INPUT` | Teks kurang dari 5 karakter, lebih dari 1000 karakter, atau terdeteksi pola *prompt injection*. | Langsung dikembalikan `400` (`{ "success": false, "message": "..." }`). |
+  | `429 Too Many Requests` | `GEMINI_RATE_LIMIT` | Kuota RPM/TPM Google Gemini API habis. | Default: `200 OK` via `heuristic_fallback`. Jika `?strict=true`: `429`. |
+  | `502 Bad Gateway` | `GEMINI_INVALID_JSON` / `GEMINI_UPSTREAM_ERROR` | AI berhalusinasi format di luar JSON atau gangguan server Gemini. | Default: `200 OK` via `heuristic_fallback`. Jika `?strict=true`: `502`. |
+  | `503 Service Unavailable` | `GEMINI_API_KEY_MISSING` | `GEMINI_API_KEY` belum dikonfigurasi pada server. | Default: `200 OK` via `heuristic_fallback`. Jika `?strict=true`: `503`. |
+  | `504 Gateway Timeout` | `GEMINI_TIMEOUT` | Gemini API tidak merespons dalam 15 detik. | Default: `200 OK` via `heuristic_fallback`. Jika `?strict=true`: `504`. |

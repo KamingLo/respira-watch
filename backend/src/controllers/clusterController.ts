@@ -3,19 +3,30 @@ import {
   detectClusters,
   listClusters,
   getClusterByIdOrCode,
+  updateClusterStatus as updateClusterStatusService,
   type ClusterQueryFilter,
+  type UpdateClusterStatusInput,
 } from '../services/clusterService.js';
 import { AppError } from '../utils/AppError.js';
 import { handleControllerError, sendSuccess } from '../utils/response.js';
 
 export const getClusters = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { category, kategori, riskStatus, status, kelurahanId } =
-      req.query as ClusterQueryFilter;
+    const {
+      category,
+      kategori,
+      level,
+      riskLevel,
+      riskStatus,
+      status,
+      kelurahanId,
+    } = req.query as ClusterQueryFilter;
 
     const clusters = await listClusters({
       category,
       kategori,
+      level,
+      riskLevel,
       riskStatus,
       status,
       kelurahanId,
@@ -59,6 +70,39 @@ export const getClusterDetail = async (
       error,
       'ClusterController.getClusterDetail',
       'Gagal memuat detail klaster penyakit.'
+    );
+  }
+};
+
+export const updateClusterStatus = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const idOrCode = String(req.params.id ?? '').trim();
+    if (!idOrCode) {
+      throw new AppError('Parameter ID atau kode klaster wajib disertakan.', 400);
+    }
+
+    const body = (req.body ?? {}) as UpdateClusterStatusInput;
+    const updatedCluster = await updateClusterStatusService(
+      idOrCode,
+      body,
+      req.officer
+    );
+
+    sendSuccess(
+      res,
+      updatedCluster,
+      'Status penanganan klaster berhasil diperbarui dan cache Redis telah disegarkan.',
+      200
+    );
+  } catch (error) {
+    handleControllerError(
+      res,
+      error,
+      'ClusterController.updateClusterStatus',
+      'Gagal memperbarui status penanganan klaster.'
     );
   }
 };
