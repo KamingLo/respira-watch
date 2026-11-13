@@ -2,6 +2,8 @@
 
 import dynamic from "next/dynamic";
 
+import type { MapPoint } from "@/types/map.types";
+
 const MapCanvas = dynamic(
   () => import("./MapCanvas"),
   {
@@ -17,13 +19,11 @@ const MapCanvas = dynamic(
 );
 
 interface MapViewProps {
-  selectedCategories: string[];
+  points: MapPoint[];
 }
 
 export default function MapView({
-  selectedCategories,
+  points,
 }: MapViewProps) {
-  return (
-    <MapCanvas selectedCategories={selectedCategories} />
-  );
+  return <MapCanvas points={points} />;
 }

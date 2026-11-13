@@ -6,60 +6,40 @@ import {
   Tooltip,
 } from "react-leaflet";
 
+import type { MapPoint } from "@/types/map.types";
+
 interface ClusterMarkerProps {
-  selectedCategories: string[];
+  points: MapPoint[];
 }
-
-interface ClusterData {
-  id: number;
-  category: "ISPA" | "Diare";
-  position: [number, number];
-  count: number;
-  location: string;
-}
-
-const clusterData: ClusterData[] = [
-  {
-    id: 1,
-    category: "ISPA",
-    position: [-3.344, 114.591],
-    count: 8,
-    location: "Kelayan Selatan",
-  },
-  {
-    id: 2,
-    category: "Diare",
-    position: [-3.346, 114.593],
-    count: 5,
-    location: "Kelayan Tengah",
-  },
-  {
-    id: 3,
-    category: "ISPA",
-    position: [-3.342, 114.589],
-    count: 12,
-    location: "Kelayan Barat",
-  },
-];
 
 export default function ClusterMarker({
-  selectedCategories,
+  points,
 }: ClusterMarkerProps) {
-  const filteredClusters = clusterData.filter((cluster) =>
-    selectedCategories.includes(cluster.category)
-  );
-
   return (
     <>
-      {filteredClusters.map((cluster) => {
+      {points.map((point) => {
         const markerColor =
-          cluster.category === "ISPA" ? "#047857" : "#F59E0B";
+          point.category.toLowerCase() === "ispa"
+            ? "#047857"
+            : point.category.toLowerCase() === "diare"
+              ? "#F59E0B"
+              : "#64748B";
+
+        // Backend: [longitude, latitude]
+        // Leaflet: [latitude, longitude]
+        const position: [number, number] = [
+          point.geom.coordinates[1],
+          point.geom.coordinates[0],
+        ];
 
         return (
           <CircleMarker
-            key={cluster.id}
-            center={cluster.position}
-            radius={Math.min(10 + cluster.count, 22)}
+            key={point.id}
+            center={position}
+            radius={Math.min(
+              10 + point.sickCount * 2,
+              22
+            )}
             pathOptions={{
               color: markerColor,
               fillColor: markerColor,
@@ -68,14 +48,42 @@ export default function ClusterMarker({
             }}
           >
             <Tooltip direction="top">
-              {cluster.category} ({cluster.count} laporan)
+              {point.category.toUpperCase()} ·{" "}
+              {point.sickCount} orang
             </Tooltip>
 
             <Popup>
-              <div>
-                <strong>{cluster.category}</strong>
-                <p>{cluster.location}</p>
-                <p>{cluster.count} laporan gejala</p>
+              <div className="space-y-1">
+                <strong>
+                  {point.category.toUpperCase()}
+                </strong>
+
+                <p>
+                  Tingkat keparahan: {point.severity}
+                </p>
+
+                <p>
+                  Jumlah orang sakit: {point.sickCount}
+                </p>
+
+                <p>
+                  Lokasi: {point.kelurahan ?? "Tidak diketahui"}
+                </p>
+
+                <p>
+                  Status: {point.status}
+                </p>
+
+                <p>
+                  Gejala: {point.symptoms.join(", ")}
+                </p>
+
+                <p>
+                  Dilaporkan:{" "}
+                  {new Date(point.reportedAt).toLocaleString(
+                    "id-ID"
+                  )}
+                </p>
               </div>
             </Popup>
           </CircleMarker>

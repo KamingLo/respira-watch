@@ -5,14 +5,16 @@ import {
   TileLayer,
 } from "react-leaflet";
 
+import type { MapPoint } from "@/types/map.types";
+
 import ClusterMarker from "../ClusterMarker/ClusterMarker";
 
 interface MapCanvasProps {
-  selectedCategories: string[];
+  points: MapPoint[];
 }
 
 export default function MapCanvas({
-  selectedCategories,
+  points,
 }: MapCanvasProps) {
   return (
     <MapContainer
@@ -26,9 +28,7 @@ export default function MapCanvas({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      <ClusterMarker
-        selectedCategories={selectedCategories}
-      />
+      <ClusterMarker points={points} />
     </MapContainer>
   );
 }
