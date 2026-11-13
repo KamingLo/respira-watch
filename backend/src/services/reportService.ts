@@ -16,6 +16,7 @@ import {
   delCache,
   DEFAULT_CACHE_TTL,
 } from '../utils/cache.js';
+import { emitNewReport, SOCKET_EVENTS } from '../config/socket.js';
 
 export const PUBLIC_MAP_CACHE_PREFIX = 'map_cache';
 export const PUBLIC_MAP_CACHE_PATTERN = `${PUBLIC_MAP_CACHE_PREFIX}:*`;
@@ -421,6 +422,31 @@ export const createOrUpdateCitizenReport = async (
   }
 
   await invalidatePublicMapCache();
+
+  emitNewReport({
+    event: SOCKET_EVENTS.REPORT_NEW,
+    isUpdated,
+    report: {
+      id: savedReport._id.toString(),
+      reporterName: savedReport.reporterName,
+      category: savedReport.category,
+      symptoms: savedReport.symptoms,
+      sickCount: savedReport.sickCount,
+      age: savedReport.age,
+      severity: savedReport.severity,
+      status: savedReport.status,
+      geom: savedReport.geom,
+      ...(savedReport.address ? { address: savedReport.address } : {}),
+      ...(savedReport.kelurahanId
+        ? { kelurahanId: savedReport.kelurahanId.toString() }
+        : {}),
+      reportedAt:
+        savedReport.reportedAt instanceof Date
+          ? savedReport.reportedAt.toISOString()
+          : new Date(savedReport.reportedAt ?? Date.now()).toISOString(),
+    },
+    emittedAt: new Date().toISOString(),
+  });
 
   return {
     report: savedReport,

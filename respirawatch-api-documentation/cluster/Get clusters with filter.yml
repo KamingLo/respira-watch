@@ -5,16 +5,16 @@ info:
 
 http:
   method: GET
-  url: http://localhost:4000/api/clusters?category=ispa&riskStatus=Siaga&status=active
+  url: http://localhost:4000/api/clusters?status=active&level=Siaga&category=ispa
   params:
-    - name: category
-      value: ispa
-      type: query
-    - name: riskStatus
-      value: Siaga
-      type: query
     - name: status
       value: active
+      type: query
+    - name: level
+      value: Siaga
+      type: query
+    - name: category
+      value: ispa
       type: query
   auth: inherit
 
