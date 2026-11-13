@@ -3,6 +3,7 @@ import express, { type Express, type Request, type Response } from 'express';
 import cors from 'cors';
 import { connectDatabase } from './config/database.js';
 import { connectRedis, redisClient } from './config/redis.js';
+import { startAqiCronJob } from './jobs/aqiCron.js';
 import apiRoutes from './routes.js';
 
 const app: Express = express();
@@ -26,6 +27,7 @@ app.use('/', apiRoutes);
 const bootstrap = async (): Promise<void> => {
   await connectDatabase();
   await connectRedis();
+  startAqiCronJob();
 
   app.listen(port, () => {
     console.log(`[Server] RespiraWatch Backend berjalan di http://localhost:${port}`);

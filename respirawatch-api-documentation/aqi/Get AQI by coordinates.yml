@@ -1,0 +1,22 @@
+info:
+  name: Get AQI by coordinates
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://localhost:4000/api/aqi?lat=-6.208763&lng=106.845599
+  params:
+    - name: lat
+      value: "-6.208763"
+      type: query
+    - name: lng
+      value: "106.845599"
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
