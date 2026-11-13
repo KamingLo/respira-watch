@@ -101,3 +101,17 @@ export const deleteCacheByPattern = async (pattern: string): Promise<void> => {
     console.warn(`[Redis Cache] Gagal menghapus cache dengan pattern "${pattern}":`, error);
   }
 };
+
+export const delCache = async (keyOrPattern: string): Promise<void> => {
+  const normalized = keyOrPattern.trim();
+  if (!normalized) {
+    return;
+  }
+
+  if (normalized.includes('*')) {
+    await deleteCacheByPattern(normalized);
+    return;
+  }
+
+  await deleteCache(normalized);
+};
