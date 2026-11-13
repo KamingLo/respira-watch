@@ -5,6 +5,7 @@ import kelurahanRoutes from './routes/kelurahanRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
 import mapRoutes from './routes/mapRoutes.js';
 import aqiRoutes from './routes/aqiRoutes.js';
+import clusterRoutes from './routes/clusterRoutes.js';
 
 const router: Router = Router();
 
@@ -15,6 +16,7 @@ router.use('/kelurahan', kelurahanRoutes);
 router.use('/reports', reportRoutes);
 router.use('/map', mapRoutes);
 router.use('/aqi', aqiRoutes);
+router.use('/clusters', clusterRoutes);
 
 export default router;
 

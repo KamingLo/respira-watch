@@ -2,12 +2,12 @@ import { Schema } from 'mongoose';
 
 export interface IGeoPoint {
   type: 'Point';
-  coordinates: [number, number]; // [longitude, latitude]
+  coordinates: [number, number];
 }
 
 export interface IGeoPolygon {
   type: 'Polygon';
-  coordinates: number[][][]; // Array of linear rings (first & last coordinate must match)
+  coordinates: number[][][];
 }
 
 export interface IGeoMultiPolygon {

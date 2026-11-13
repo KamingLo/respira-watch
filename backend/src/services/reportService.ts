@@ -17,8 +17,9 @@ import {
   DEFAULT_CACHE_TTL,
 } from '../utils/cache.js';
 
-export const PUBLIC_MAP_CACHE_PREFIX = 'map:public';
+export const PUBLIC_MAP_CACHE_PREFIX = 'map_cache';
 export const PUBLIC_MAP_CACHE_PATTERN = `${PUBLIC_MAP_CACHE_PREFIX}:*`;
+export const LEGACY_PUBLIC_MAP_CACHE_PATTERN = 'map:public:*';
 
 const VALID_CITIZEN_CATEGORIES: CitizenReportCategory[] = ['ispa', 'diare'];
 
@@ -53,7 +54,7 @@ const SEVERITY_WEIGHT_MAP: Record<ReportSeverity, number> = {
 };
 
 export interface CitizenReportInput {
-  // Mendukung key Bahasa Indonesia & Bahasa Inggris
+
   kategori?: string;
   category?: string;
   gejala?: string[] | string;
@@ -94,7 +95,7 @@ export interface PublicMapQueryFilter {
   kelurahanId?: string;
   startDate?: string;
   endDate?: string;
-  bbox?: string; // format: "minLng,minLat,maxLng,maxLat"
+  bbox?: string;
 }
 
 export interface PublicMapPointItem {
@@ -116,11 +117,11 @@ export interface PublicMapPointItem {
 }
 
 export interface PublicHeatmapItem {
-  coordinates: [number, number]; // [lng, lat] ter-jitter
+  coordinates: [number, number];
   lat: number;
   lng: number;
   weight: number;
-  intensity: number; // ternormalisasi 0.1 - 1.0
+  intensity: number;
   category: string;
   severity: ReportSeverity;
   sickCount: number;
@@ -155,9 +156,6 @@ export interface PublicMapResponseData {
   };
 }
 
-/**
- * Validasi koordinat GeoJSON Point [longitude, latitude]
- */
 export const validateReportGeom = (rawGeom: unknown): IGeoPoint => {
   if (!rawGeom) {
     throw new AppError(
@@ -215,10 +213,6 @@ export const validateReportGeom = (rawGeom: unknown): IGeoPoint => {
   };
 };
 
-/**
- * Mengacak (Jittering) koordinat [longitude, latitude] sejauh 100m - 200m di level memori
- * demi menjaga privasi titik rumah/lokasi presisi pelapor pada peta publik.
- */
 export const applyCoordinateJitter = (
   coordinates: [number, number],
   minMeters = 100,
@@ -226,16 +220,13 @@ export const applyCoordinateJitter = (
 ): [number, number] => {
   const [lng, lat] = coordinates;
 
-  // Jarak acak seragam antara 100m hingga 200m
   const distanceMeters = minMeters + Math.random() * (maxMeters - minMeters);
-  // Sudut arah acak antara 0 hingga 2*PI radian
+
   const angleRad = Math.random() * 2 * Math.PI;
 
-  // 1 derajat lintang (latitude) ≈ 111.320 meter
   const metersPerDegreeLat = 111_320;
   const deltaLat = (distanceMeters * Math.cos(angleRad)) / metersPerDegreeLat;
 
-  // 1 derajat bujur (longitude) ≈ 111.320 * cos(lat) meter
   const cosLat = Math.cos((lat * Math.PI) / 180);
   const safeCosLat = Math.abs(cosLat) < 1e-6 ? 1e-6 : cosLat;
   const deltaLng = (distanceMeters * Math.sin(angleRad)) / (metersPerDegreeLat * safeCosLat);
@@ -246,20 +237,17 @@ export const applyCoordinateJitter = (
   return [jitteredLng, jitteredLat];
 };
 
-/**
- * Menghapus seluruh cache peta publik di Redis (Cache Invalidation)
- */
 export const invalidatePublicMapCache = async (): Promise<void> => {
-  await delCache(PUBLIC_MAP_CACHE_PATTERN);
+  await Promise.all([
+    delCache(PUBLIC_MAP_CACHE_PATTERN),
+    delCache(LEGACY_PUBLIC_MAP_CACHE_PATTERN),
+  ]);
 };
 
-/**
- * Membuat laporan warga baru atau meng-update laporan yang sudah ada jika device_hash sama
- */
 export const createOrUpdateCitizenReport = async (
   input: CitizenReportInput
 ): Promise<UpsertCitizenReportResult> => {
-  // 1. Validasi kategori (ispa / diare)
+
   const rawCategory = (input.kategori ?? input.category ?? '').toString().trim().toLowerCase();
   if (!VALID_CITIZEN_CATEGORIES.includes(rawCategory as CitizenReportCategory)) {
     throw new AppError(
@@ -269,7 +257,6 @@ export const createOrUpdateCitizenReport = async (
   }
   const category = rawCategory as CitizenReportCategory;
 
-  // 2. Validasi gejala (symptoms)
   const rawSymptoms = input.gejala ?? input.symptoms;
   let symptoms: string[] = [];
   if (Array.isArray(rawSymptoms)) {
@@ -287,7 +274,6 @@ export const createOrUpdateCitizenReport = async (
     throw new AppError('Gejala (gejala / symptoms) wajib diisi minimal 1 gejala.', 400);
   }
 
-  // 3. Validasi jumlah sakit (jumlah_sakit / sickCount)
   const rawSickCount = input.jumlah_sakit ?? input.jumlahSakit ?? input.sickCount;
   const sickCount = Number(rawSickCount);
   if (
@@ -303,7 +289,6 @@ export const createOrUpdateCitizenReport = async (
     );
   }
 
-  // 4. Validasi usia (usia / age)
   const rawAge = input.usia ?? input.age;
   const age = Number(rawAge);
   if (
@@ -320,7 +305,6 @@ export const createOrUpdateCitizenReport = async (
     );
   }
 
-  // 5. Validasi tingkat keparahan (tingkat_keparahan / severity)
   const rawSeverity = (
     input.tingkat_keparahan ??
     input.tingkatKeparahan ??
@@ -339,7 +323,6 @@ export const createOrUpdateCitizenReport = async (
   }
   const severity = rawSeverity as ReportSeverity;
 
-  // 6. Validasi device_hash
   const rawDeviceHash = (input.device_hash ?? input.deviceHash ?? '').toString().trim();
   if (!rawDeviceHash || rawDeviceHash.length < 4) {
     throw new AppError(
@@ -349,10 +332,8 @@ export const createOrUpdateCitizenReport = async (
   }
   const deviceHash = rawDeviceHash.toLowerCase();
 
-  // 7. Validasi koordinat geom (GeoJSON Point)
   const validatedGeom = validateReportGeom(input.geom ?? input.location);
 
-  // 8. Resolusi Kelurahan secara otomatis (Spatial Lookup $geoIntersects) atau berdasarkan kelurahanId
   let resolvedKelurahanId: Types.ObjectId | undefined;
   if (input.kelurahanId) {
     if (!Types.ObjectId.isValid(input.kelurahanId)) {
@@ -390,7 +371,6 @@ export const createOrUpdateCitizenReport = async (
   const address = (input.address ?? input.alamat)?.toString().trim();
   const reporterContact = input.reporterContact?.toString().trim();
 
-  // 9. Cek apakah device_hash sudah ada -> jika sama cukup update laporan yang sudah ada
   const existingReport = await Report.findOne({ deviceHash }).sort({ updatedAt: -1 });
 
   let savedReport: IReport;
@@ -440,7 +420,6 @@ export const createOrUpdateCitizenReport = async (
     isUpdated = false;
   }
 
-  // 10. Cache Invalidation instan pada seluruh cache GET /api/map
   await invalidatePublicMapCache();
 
   return {
@@ -449,10 +428,6 @@ export const createOrUpdateCitizenReport = async (
   };
 };
 
-/**
- * Mengambil data titik laporan (dengan Jittering 100-200m di memori) dan Heatmap untuk Peta Publik.
- * Dilengkapi caching Redis berbasis query dinamis dan fallback mulus ke MongoDB.
- */
 export const getPublicMapData = async (
   rawFilter: PublicMapQueryFilter = {}
 ): Promise<PublicMapResponseData> => {
@@ -478,13 +453,11 @@ export const getPublicMapData = async (
 
   const cacheKey = buildFilterCacheKey(PUBLIC_MAP_CACHE_PREFIX, normalizedFilterRecord);
 
-  // 1. Coba baca dari Redis Cache terlebih dahulu (jika Redis error/down, getCache mengembalikan null sebagai fallback mulus)
   const cachedMapData = await getCache<PublicMapResponseData>(cacheKey);
   if (cachedMapData) {
     return cachedMapData;
   }
 
-  // 2. Bangun query MongoDB (Fallback / Cache Miss)
   const mongoQuery: Record<string, unknown> = {
     status: { $ne: 'rejected' },
   };
@@ -564,13 +537,11 @@ export const getPublicMapData = async (
     };
   }
 
-  // 3. Eksekusi query ke MongoDB
   const reports = await Report.find(mongoQuery)
     .populate('kelurahanId', 'code name kecamatan')
     .sort({ reportedAt: -1 })
     .lean();
 
-  // 4. Transformasi & Jittering 100-200m di level memori demi privasi warga
   const points: PublicMapPointItem[] = [];
   const heatmap: PublicHeatmapItem[] = [];
   const byCategory = { ispa: 0, diare: 0, other: 0 };
@@ -583,7 +554,6 @@ export const getPublicMapData = async (
       continue;
     }
 
-    // Jittering koordinat sejauh 100-200m di memori
     const jitteredCoords = applyCoordinateJitter(
       [rawPoint.coordinates[0], rawPoint.coordinates[1]],
       100,
@@ -645,7 +615,6 @@ export const getPublicMapData = async (
       reportedAt: reportedAtIso,
     });
 
-    // Hitung bobot & intensitas Heatmap berdasarkan keparahan dan jumlah sakit
     const severityWeight = SEVERITY_WEIGHT_MAP[severity] ?? 2;
     const rawWeight = severityWeight * Math.min(sickCount, 10);
     const normalizedIntensity = Number(Math.min(1, Math.max(0.1, rawWeight / 12)).toFixed(2));
@@ -687,7 +656,6 @@ export const getPublicMapData = async (
     },
   };
 
-  // 5. Simpan hasil ke Redis Cache dengan TTL 5 menit (jika Redis mati, setCache tidak akan melempar error)
   await setCache(cacheKey, responseData, DEFAULT_CACHE_TTL);
 
   return responseData;

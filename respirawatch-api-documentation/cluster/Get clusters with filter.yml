@@ -1,0 +1,25 @@
+info:
+  name: Get clusters with filter
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: http://localhost:4000/api/clusters?category=ispa&riskStatus=Siaga&status=active
+  params:
+    - name: category
+      value: ispa
+      type: query
+    - name: riskStatus
+      value: Siaga
+      type: query
+    - name: status
+      value: active
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

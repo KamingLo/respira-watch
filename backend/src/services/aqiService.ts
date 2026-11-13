@@ -7,24 +7,9 @@ import type { IGeoPoint, IGeoPolygon } from '../models/GeoJSON.js';
 import { AppError } from '../utils/AppError.js';
 import { isRedisReady } from '../utils/cache.js';
 
-/**
- * Prefix key Redis untuk menyimpan nilai AQI terbaru per sel grid
- */
 export const AQI_GRID_CACHE_PREFIX = 'aqi:grid';
-
-/**
- * Durasi TTL Redis untuk data AQI per grid_id: 2 jam (7200 detik)
- */
-export const AQI_GRID_CACHE_TTL_SECONDS = 2 * 60 * 60; // 7200 detik
-
-/**
- * Endpoint publik Open-Meteo Air Quality API
- */
+export const AQI_GRID_CACHE_TTL_SECONDS = 2 * 60 * 60;
 export const OPEN_METEO_AIR_QUALITY_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality';
-
-/**
- * Struktur mentah respons JSON dari Open-Meteo Air Quality API
- */
 export interface OpenMeteoAirQualityApiResponse {
   latitude: number;
   longitude: number;
@@ -54,9 +39,6 @@ export interface OpenMeteoAirQualityApiResponse {
   };
 }
 
-/**
- * Data hasil normalisasi dari Open-Meteo API
- */
 export interface OpenMeteoNormalizedReading {
   aqi: number;
   pm25: number;
@@ -71,9 +53,6 @@ export interface OpenMeteoNormalizedReading {
   recordedAt: Date;
 }
 
-/**
- * Informasi status area & rekomendasi kesehatan untuk Kartu Hasil (Result Card)
- */
 export interface AreaStatusInfo {
   category: AqiCategory;
   riskLevel: IGridCell['riskLevel'];
@@ -84,9 +63,6 @@ export interface AreaStatusInfo {
   sensitiveGroupWarning: string;
 }
 
-/**
- * Payload yang disimpan di Redis (SETEX 2 jam) per grid_id
- */
 export interface CachedGridAqiPayload {
   gridId: string;
   cellCode: string;
@@ -109,9 +85,6 @@ export interface CachedGridAqiPayload {
   cachedAt: string;
 }
 
-/**
- * Respons lengkap untuk Kartu Hasil pada endpoint GET /api/aqi
- */
 export interface AqiResultCardResponse {
   grid_id: string;
   cellCode: string;
@@ -160,22 +133,9 @@ export interface AqiResultCardResponse {
   };
 }
 
-/**
- * Membentuk key Redis untuk menyimpan AQI terbaru berdasarkan ID sel grid (`grid_id`).
- *
- * @param gridId - ObjectId string dari dokumen GridCell
- * @returns Key Redis berformat `aqi:grid:{gridId}`
- */
 export const buildGridAqiCacheKey = (gridId: string): string =>
   `${AQI_GRID_CACHE_PREFIX}:${gridId.trim()}`;
 
-/**
- * Menghitung estimasi US EPA AQI dari konsentrasi PM2.5 (µg/m³)
- * digunakan sebagai fallback apabila Open-Meteo mengembalikan nilai `us_aqi = null`.
- *
- * @param pm25 - Konsentrasi PM2.5 dalam µg/m³
- * @returns Nilai integer AQI (0 - 500)
- */
 export const calculateAqiFromPm25 = (pm25: number): number => {
   const c = Math.max(0, pm25);
   const breakpoints: Array<[number, number, number, number]> = [
@@ -197,13 +157,6 @@ export const calculateAqiFromPm25 = (pm25: number): number => {
   return 500;
 };
 
-/**
- * Memetakan nilai numerik AQI ke kategori kualitas udara (`AqiCategory`),
- * tingkat risiko sel grid (`riskLevel`), warna indikator, dan rekomendasi kesehatan Kartu Hasil.
- *
- * @param aqi - Nilai indeks kualitas udara (US AQI 0-500+)
- * @returns Objek metadata status area (`AreaStatusInfo`)
- */
 export const resolveAreaStatusFromAqi = (aqi: number): AreaStatusInfo => {
   if (aqi <= 50) {
     return {
@@ -287,15 +240,6 @@ export const resolveAreaStatusFromAqi = (aqi: number): AreaStatusInfo => {
   };
 };
 
-/**
- * Menghitung jarak permukaan bumi (Haversine) dalam satuan meter antara dua koordinat.
- *
- * @param lat1 - Latitude titik pertama
- * @param lng1 - Longitude titik pertama
- * @param lat2 - Latitude titik kedua
- * @param lng2 - Longitude titik kedua
- * @returns Jarak dalam meter (dibulatkan ke bilangan bulat terdekat)
- */
 export const calculateDistanceMeters = (
   lat1: number,
   lng1: number,
@@ -316,15 +260,6 @@ export const calculateDistanceMeters = (
   return Math.round(earthRadiusMeters * c);
 };
 
-/**
- * Menarik data kualitas udara terkini (PM2.5, PM10, US AQI, dan polutan pendukung)
- * dari Open-Meteo Air Quality API untuk koordinat lintang dan bujur tertentu.
- *
- * @param lat - Latitude koordinat target (-90 s/d 90)
- * @param lng - Longitude koordinat target (-180 s/d 180)
- * @returns Data pembacaan kualitas udara yang telah dinormalisasi (`OpenMeteoNormalizedReading`)
- * @throws {Error} Apabila Open-Meteo API gagal merespons atau mengembalikan status HTTP non-2xx
- */
 export const fetchOpenMeteoAirQuality = async (
   lat: number,
   lng: number
@@ -410,14 +345,6 @@ export const fetchOpenMeteoAirQuality = async (
   };
 };
 
-/**
- * Memastikan koleksi `GridCell` memiliki data sel grid awal jika masih kosong.
- * Fungsi ini membangun sel grid otomatis dari dokumen `Kelurahan` yang ada (atau membuat
- * grid default DKI Jakarta jika koleksi Kelurahan juga kosong) agar query spasial `$near`
- * dan Cron Job selalu dapat beroperasi.
- *
- * @returns Daftar dokumen `IGridCell` yang aktif di database
- */
 export const ensureDefaultGridCells = async (): Promise<IGridCell[]> => {
   const existingCells = await GridCell.find().sort({ cellCode: 1 });
   if (existingCells.length > 0) {
@@ -452,7 +379,6 @@ export const ensureDefaultGridCells = async (): Promise<IGridCell[]> => {
     return created;
   }
 
-  // Fallback jika koleksi Kelurahan pun masih kosong
   const defaultStations: Array<{
     cellCode: string;
     lng: number;
@@ -503,13 +429,6 @@ export const ensureDefaultGridCells = async (): Promise<IGridCell[]> => {
   return createdFallback;
 };
 
-/**
- * Menyimpan payload AQI terbaru per `grid_id` ke Redis menggunakan perintah `SETEX` dengan TTL 2 jam (7200 detik).
- * Jika Redis sedang tidak aktif/terputus, kegagalan hanya dicatat sebagai warning agar tidak menghentikan proses utama.
- *
- * @param gridId - ID dokumen GridCell (`grid_id`)
- * @param payload - Objek data cuaca/AQI terbaru yang akan di-cache
- */
 export const writeGridAqiToRedisSetex = async (
   gridId: string,
   payload: CachedGridAqiPayload
@@ -529,12 +448,6 @@ export const writeGridAqiToRedisSetex = async (
   }
 };
 
-/**
- * Membaca nilai cuaca/AQI terbaru dari Redis berdasarkan `grid_id`.
- *
- * @param gridId - ID dokumen GridCell (`grid_id`)
- * @returns Objek `CachedGridAqiPayload` jika ditemukan (Cache Hit), atau `null` jika terjadi Cache Miss / Redis error
- */
 export const readGridAqiFromRedis = async (
   gridId: string
 ): Promise<CachedGridAqiPayload | null> => {
@@ -557,15 +470,6 @@ export const readGridAqiFromRedis = async (
   }
 };
 
-/**
- * Melakukan operasi **Dual-Write (MongoDB & Redis)** untuk satu sel grid (`GridCell`):
- * 1. Menarik data PM2.5, PM10, dan AQI dari Open-Meteo API berdasarkan centroid sel grid.
- * 2. Menyimpan riwayat pembacaan baru ke koleksi MongoDB `AqiReading` dan memperbarui ringkasan `GridCell`.
- * 3. Secara bersamaan melakukan operasi `SETEX` (TTL 2 jam / 7200 detik) ke Redis untuk key `aqi:grid:{grid_id}`.
- *
- * @param gridCell - Dokumen `IGridCell` yang akan disinkronkan
- * @returns Hasil pembacaan (`AqiReading`) dan payload cache (`CachedGridAqiPayload`)
- */
 export const syncSingleGridCellAqi = async (
   gridCell: IGridCell
 ): Promise<{ reading: IAqiReading; cachedPayload: CachedGridAqiPayload }> => {
@@ -598,7 +502,6 @@ export const syncSingleGridCellAqi = async (
     cachedAt: new Date().toISOString(),
   };
 
-  // Eksekusi Dual-Write secara paralel: Simpan riwayat ke MongoDB (AqiReading + update GridCell) & SETEX 2 jam ke Redis
   const [savedReading] = await Promise.all([
     AqiReading.create({
       stationCode,
@@ -636,31 +539,6 @@ export const syncSingleGridCellAqi = async (
   };
 };
 
-/**
- * Mencari sel grid terdekat dari koordinat pengguna menggunakan operator spasial `$near` Mongoose,
- * lalu mengambil data AQI dengan prioritas baca dari Redis (`aqi:grid:{grid_id}`) dan fallback ke MongoDB.
- *
- * ### Penjelasan Alur & Potensi Cache Miss:
- * 1. **Resolusi Spasial (`$near`)**: Mencari dokumen `GridCell` terdekat dari titik `[lng, lat]`
- *    menggunakan indeks `2dsphere` pada field `centroid`.
- * 2. **Prioritas Baca Redis (Cache Hit)**: Mengambil nilai cuaca terbaru dari key `aqi:grid:{grid_id}`
- *    yang ditulis oleh Cron Job melalui operasi `SETEX` (TTL 2 jam / 7200 detik).
- * 3. **Potensi Cache Miss & Strategi Fallback**:
- *    - *Cache Miss* dapat terjadi apabila:
- *      a) TTL key Redis (2 jam) telah kedaluwarsa karena jadwal cron tertunda,
- *      b) Server Redis baru saja di-restart atau sedang mengalami gangguan koneksi, atau
- *      c) Sel grid baru saja dibuat dan belum melewati siklus eksekusi cron per jam (*cold start*).
- *    - Saat *Cache Miss* terdeteksi (`readGridAqiFromRedis` mengembalikan `null`), fungsi otomatis
- *      melakukan **Fallback ke MongoDB** dengan mencari dokumen `AqiReading` terbaru untuk `gridCellId` tersebut,
- *      kemudian menulis ulang (*re-populate*) nilai tersebut ke Redis menggunakan `SETEX` (TTL 2 jam).
- *    - Jika koleksi `AqiReading` di MongoDB untuk sel grid tersebut juga masih kosong (*cold start*),
- *      fungsi akan menarik data secara langsung (*on-demand*) dari Open-Meteo API dan menjalankan *Dual-Write*.
- *
- * @param rawLat - Nilai latitude dari query parameter (`-90` s/d `90`)
- * @param rawLng - Nilai longitude dari query parameter (`-180` s/d `180`)
- * @returns Objek `AqiResultCardResponse` lengkap dengan metrik polutan, detail lokasi grid, dan status kesehatan area
- * @throws {AppError} HTTP 400 jika parameter `lat` atau `lng` tidak valid, atau HTTP 404 jika sel grid tidak ditemukan
- */
 export const getNearestGridAqiByCoords = async (
   rawLat: unknown,
   rawLng: unknown
@@ -696,10 +574,8 @@ export const getNearestGridAqiByCoords = async (
     );
   }
 
-  // Pastikan terdapat data GridCell di database sebelum menjalankan query $near
   await ensureDefaultGridCells();
 
-  // Cari sel grid terdekat menggunakan operator spasial $near Mongoose pada field centroid (2dsphere)
   const nearestGrid = await GridCell.findOne({
     centroid: {
       $near: {
@@ -718,12 +594,10 @@ export const getNearestGridAqiByCoords = async (
   const gridId = nearestGrid._id.toString();
   const cacheKey = buildGridAqiCacheKey(gridId);
 
-  // 1. Prioritas Baca Redis menggunakan grid_id
   let aqiData = await readGridAqiFromRedis(gridId);
   let cacheSource: 'redis' | 'mongodb_fallback' | 'open_meteo_live' = 'redis';
   let isCacheHit = true;
 
-  // 2. Jika Redis kosong (Cache Miss), panggil fallback ke MongoDB
   if (!aqiData) {
     isCacheHit = false;
 
@@ -768,11 +642,8 @@ export const getNearestGridAqiByCoords = async (
         cachedAt: new Date().toISOString(),
       };
 
-      // Tulis kembali hasil fallback MongoDB ke Redis menggunakan SETEX (TTL 2 jam)
       await writeGridAqiToRedisSetex(gridId, aqiData);
     } else {
-      // Cold-start fallback: jika MongoDB juga belum memiliki riwayat AqiReading pada grid ini,
-      // tarik data dari Open-Meteo API dan lakukan Dual-Write (DB & Redis SETEX 2 jam).
       cacheSource = 'open_meteo_live';
       try {
         const synced = await syncSingleGridCellAqi(nearestGrid);

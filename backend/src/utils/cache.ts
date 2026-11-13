@@ -1,6 +1,6 @@
 import { redisClient } from '../config/redis.js';
 
-export const DEFAULT_CACHE_TTL = 300; // 5 menit (dalam detik)
+export const DEFAULT_CACHE_TTL = 300;
 
 export const isRedisReady = (): boolean => redisClient.status === 'ready';
 

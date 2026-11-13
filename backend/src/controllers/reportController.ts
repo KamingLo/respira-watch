@@ -7,11 +7,6 @@ import {
 } from '../services/reportService.js';
 import { handleControllerError, sendSuccess } from '../utils/response.js';
 
-/**
- * POST /api/reports
- * Menyimpan laporan warga baru atau meng-update laporan yang sudah ada jika device_hash sama,
- * lalu mengeksekusi Cache Invalidation (delCache) pada cache peta publik.
- */
 export const createReport = async (req: Request, res: Response): Promise<void> => {
   try {
     const body = req.body as CitizenReportInput;
@@ -33,11 +28,6 @@ export const createReport = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-/**
- * GET /api/map
- * Mengambil data titik laporan (dengan Jittering lokasi 100-200m di memori) dan Heatmap
- * menggunakan strategi caching Redis dinamis serta fallback mulus ke MongoDB.
- */
 export const getPublicMap = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
