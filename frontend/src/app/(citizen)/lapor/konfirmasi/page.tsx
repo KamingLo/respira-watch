@@ -94,7 +94,7 @@ export default function ConfirmReportPage() {
       JSON.stringify(updatedReport)
     );
 
-    router.push("/lapor/berhasil");
+    router.push("/lapor/konfirmasi/berhasil");
   };
 
   if (loading || !report) {

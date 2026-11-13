@@ -24,6 +24,23 @@ interface Symptom {
   icon: string;
 }
 
+interface SpeechRecognitionResultEvent extends Event {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionInstance {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+  onerror: ((event: Event) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
 const symptoms: Record<Category, Symptom[]> = {
   ISPA: [
     { label: "Batuk", icon: "/images/symptoms/batuk.png" },
@@ -70,9 +87,13 @@ export default function ReportPage() {
 
   // Voice-to-text
   const handleVoiceInput = () => {
+    const speechWindow = window as Window & {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
     const SpeechRecognitionAPI =
-      window.SpeechRecognition ||
-      window.webkitSpeechRecognition;
+      speechWindow.SpeechRecognition ||
+      speechWindow.webkitSpeechRecognition;
 
     if (!SpeechRecognitionAPI) {
       setVoiceError(
@@ -90,7 +111,7 @@ export default function ReportPage() {
     setVoiceError("");
     setIsRecording(true);
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: SpeechRecognitionResultEvent) => {
       let transcript = "";
 
       for (
