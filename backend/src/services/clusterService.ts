@@ -35,7 +35,6 @@ import {
   SOCKET_EVENTS,
   type SocketClusterItem,
 } from '../config/socket.js';
-
 export const CLUSTER_TIME_WINDOW_HOURS = 72;
 export const CLUSTER_CRON_SCHEDULE = '* * * * *';
 export const DBSCAN_MAX_DISTANCE_KM = 0.5;
@@ -43,13 +42,11 @@ export const DBSCAN_MAX_DISTANCE_METERS = DBSCAN_MAX_DISTANCE_KM * 1000;
 export const DBSCAN_MIN_POINTS = 5;
 export const CLUSTER_CATEGORIES: readonly ClusterCategory[] = ['ispa', 'diare'] as const;
 export const MAP_CACHE_PATTERNS: readonly string[] = ['map_cache:*', 'map:public:*'] as const;
-
 export const CLUSTER_LIST_CACHE_PREFIX = 'clusters:list';
 export const CLUSTER_LIST_CACHE_PATTERN = `${CLUSTER_LIST_CACHE_PREFIX}:*`;
 export const CLUSTER_DETAIL_CACHE_PREFIX = 'clusters:detail';
 export const CLUSTER_DETAIL_CACHE_PATTERN = `${CLUSTER_DETAIL_CACHE_PREFIX}:*`;
 export const CLUSTER_CACHE_TTL_SECONDS = 300;
-
 export interface LeanClusterReportDoc {
   _id: Types.ObjectId;
   category: CitizenReportCategory;
@@ -63,7 +60,6 @@ export interface LeanClusterReportDoc {
   gridCellId?: Types.ObjectId;
   reportedAt: Date;
 }
-
 export interface DbscanReportPointProps {
   reportId: string;
   category: ClusterCategory;
@@ -79,7 +75,6 @@ export interface DbscanReportPointProps {
   dbscan?: 'edge' | 'core' | 'noise';
   cluster?: number;
 }
-
 interface PreloadedGridAqiSnapshot {
   gridId: string;
   kelurahanId?: Types.ObjectId;
@@ -87,7 +82,6 @@ interface PreloadedGridAqiSnapshot {
   lat: number;
   aqi: number;
 }
-
 export interface EvaluateClusterRiskInput {
   category: ClusterCategory;
   reportCount: number;
@@ -96,14 +90,12 @@ export interface EvaluateClusterRiskInput {
   hasSevereSymptoms?: boolean;
   vulnerableGroupDominant?: boolean;
 }
-
 export interface ClusterRiskEvaluationResult {
   riskStatus: ClusterRiskStatus;
   riskColor: ClusterRiskColor;
   colorHex: string;
   riskLevel: ClusterLegacyRiskLevel;
 }
-
 export interface DetectClustersResult {
   windowStartIso: string;
   windowEndIso: string;
@@ -122,17 +114,14 @@ export interface DetectClustersResult {
   cacheInvalidated: boolean;
   clusters: ICluster[];
 }
-
 export const evaluateClusterRisk = (
   input: EvaluateClusterRiskInput
 ): ClusterRiskEvaluationResult => {
   const { category, reportCount, totalSickCount, averageAqi } = input;
   const safeAqi = Number.isFinite(averageAqi) && averageAqi >= 0 ? averageAqi : 50;
-
   const isSiaga =
     reportCount >= 10 ||
     (reportCount >= DBSCAN_MIN_POINTS && safeAqi > 100);
-
   if (isSiaga) {
     if (input.hasSevereSymptoms || input.vulnerableGroupDominant) {
       return {
@@ -142,7 +131,6 @@ export const evaluateClusterRisk = (
         riskLevel: 'outbreak',
       };
     }
-
     return {
       riskStatus: 'Siaga',
       riskColor: 'Oranye',
@@ -150,7 +138,6 @@ export const evaluateClusterRisk = (
       riskLevel: 'high',
     };
   }
-
   return {
     riskStatus: 'Waspada',
     riskColor: 'Kuning',
@@ -158,7 +145,6 @@ export const evaluateClusterRisk = (
     riskLevel: 'moderate',
   };
 };
-
 export const buildFallbackPolygonAroundCenter = (
   centerCoords: [number, number],
   radiusMeters = 100
@@ -169,10 +155,8 @@ export const buildFallbackPolygonAroundCenter = (
   const cosLat = Math.cos((centerLat * Math.PI) / 180);
   const safeCosLat = Math.abs(cosLat) < 1e-6 ? 1e-6 : cosLat;
   const metersPerDegreeLng = metersPerDegreeLat * safeCosLat;
-
   const segments = 8;
   const ring: number[][] = [];
-
   for (let i = 0; i < segments; i += 1) {
     const angle = (2 * Math.PI * i) / segments;
     const dLng = (effectiveRadius * Math.cos(angle)) / metersPerDegreeLng;
@@ -182,17 +166,14 @@ export const buildFallbackPolygonAroundCenter = (
       Number((centerLat + dLat).toFixed(6)),
     ]);
   }
-
   if (ring.length > 0 && ring[0]) {
     ring.push([ring[0][0]!, ring[0][1]!]);
   }
-
   return {
     type: 'Polygon',
     coordinates: [ring],
   };
 };
-
 export const buildClusterBoundaryPolygon = (
   clusterPoints: Array<Feature<Point, DbscanReportPointProps>>,
   centerCoords: [number, number],
@@ -201,7 +182,6 @@ export const buildClusterBoundaryPolygon = (
   try {
     const fc = featureCollection(clusterPoints);
     const hullFeature = convex(fc);
-
     if (
       hullFeature &&
       hullFeature.geometry &&
@@ -215,7 +195,6 @@ export const buildClusterBoundaryPolygon = (
         Number(Number(coord[0]).toFixed(6)),
         Number(Number(coord[1]).toFixed(6)),
       ]);
-
       const uniqueCoordKeys = new Set(outerRing.map(([lng, lat]) => `${lng},${lat}`));
       if (uniqueCoordKeys.size >= 3) {
         const firstCoord = outerRing[0];
@@ -227,7 +206,6 @@ export const buildClusterBoundaryPolygon = (
         ) {
           outerRing.push([firstCoord[0]!, firstCoord[1]!]);
         }
-
         return {
           type: 'Polygon',
           coordinates: [outerRing],
@@ -240,26 +218,21 @@ export const buildClusterBoundaryPolygon = (
       error
     );
   }
-
   return buildFallbackPolygonAroundCenter(centerCoords, Math.max(100, radiusMeters));
 };
-
 export const calculateCentroidAndRadius = (
   clusterPoints: Array<Feature<Point, DbscanReportPointProps>>
 ): { centerCoords: [number, number]; radiusMeters: number } => {
   let sumLng = 0;
   let sumLat = 0;
   const count = clusterPoints.length;
-
   for (const pt of clusterPoints) {
     const [lng, lat] = pt.geometry.coordinates as [number, number];
     sumLng += lng;
     sumLat += lat;
   }
-
   const centerLng = Number((sumLng / count).toFixed(6));
   const centerLat = Number((sumLat / count).toFixed(6));
-
   let maxDistanceMeters = 0;
   for (const pt of clusterPoints) {
     const [lng, lat] = pt.geometry.coordinates as [number, number];
@@ -268,20 +241,16 @@ export const calculateCentroidAndRadius = (
       maxDistanceMeters = dist;
     }
   }
-
   const radiusMeters = Math.max(50, Math.min(maxDistanceMeters || 150, DBSCAN_MAX_DISTANCE_METERS));
-
   return {
     centerCoords: [centerLng, centerLat],
     radiusMeters,
   };
 };
-
 export const extractDominantSymptoms = (
   clusterPoints: Array<Feature<Point, DbscanReportPointProps>>
 ): string[] => {
   const freqMap = new Map<string, number>();
-
   for (const pt of clusterPoints) {
     const symptoms = pt.properties?.symptoms ?? [];
     for (const rawSymptom of symptoms) {
@@ -292,25 +261,20 @@ export const extractDominantSymptoms = (
       freqMap.set(normalized, (freqMap.get(normalized) ?? 0) + 1);
     }
   }
-
   const sorted = Array.from(freqMap.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([symptom]) => symptom);
-
   freqMap.clear();
   return sorted;
 };
-
 const preloadGridAqiSnapshots = async (): Promise<PreloadedGridAqiSnapshot[]> => {
   const gridCells = await GridCell.find()
     .select('_id kelurahanId centroid currentAqi')
     .lean();
-
   if (gridCells.length === 0) {
     return [];
   }
-
   const snapshots: PreloadedGridAqiSnapshot[] = await Promise.all(
     gridCells.map(async (cell) => {
       const gridId = cell._id.toString();
@@ -322,7 +286,6 @@ const preloadGridAqiSnapshots = async (): Promise<PreloadedGridAqiSnapshot[]> =>
           : typeof cell.currentAqi === 'number' && cell.currentAqi > 0
             ? cell.currentAqi
             : 50;
-
       return {
         gridId,
         ...(cell.kelurahanId ? { kelurahanId: cell.kelurahanId } : {}),
@@ -332,10 +295,8 @@ const preloadGridAqiSnapshots = async (): Promise<PreloadedGridAqiSnapshot[]> =>
       };
     })
   );
-
   return snapshots;
 };
-
 const resolveClusterAqiAndKelurahan = async (
   centerCoords: [number, number],
   gridSnapshots: PreloadedGridAqiSnapshot[],
@@ -344,11 +305,9 @@ const resolveClusterAqiAndKelurahan = async (
   const [centerLng, centerLat] = centerCoords;
   let resolvedKelurahanId = majorityKelurahanId;
   let nearestAqi: number | undefined;
-
   if (gridSnapshots.length > 0) {
     let bestGrid: PreloadedGridAqiSnapshot | undefined;
     let minDistance = Number.POSITIVE_INFINITY;
-
     for (const snap of gridSnapshots) {
       const dist = calculateDistanceMeters(centerLat, centerLng, snap.lat, snap.lng);
       if (dist < minDistance) {
@@ -356,7 +315,6 @@ const resolveClusterAqiAndKelurahan = async (
         bestGrid = snap;
       }
     }
-
     if (bestGrid) {
       nearestAqi = bestGrid.aqi;
       if (!resolvedKelurahanId && bestGrid.kelurahanId) {
@@ -364,7 +322,6 @@ const resolveClusterAqiAndKelurahan = async (
       }
     }
   }
-
   if (nearestAqi === undefined) {
     const latestReading = await AqiReading.findOne({
       location: {
@@ -379,7 +336,6 @@ const resolveClusterAqiAndKelurahan = async (
       .sort({ recordedAt: -1 })
       .select('aqi kelurahanId')
       .lean();
-
     if (latestReading) {
       nearestAqi = latestReading.aqi;
       if (!resolvedKelurahanId && latestReading.kelurahanId) {
@@ -387,7 +343,6 @@ const resolveClusterAqiAndKelurahan = async (
       }
     }
   }
-
   if (!resolvedKelurahanId) {
     const matchedKelurahan = await Kelurahan.findOne({
       boundary: {
@@ -401,18 +356,15 @@ const resolveClusterAqiAndKelurahan = async (
     })
       .select('_id')
       .lean();
-
     if (matchedKelurahan?._id) {
       resolvedKelurahanId = matchedKelurahan._id;
     }
   }
-
   return {
     averageAqi: Math.round(nearestAqi ?? 50),
     ...(resolvedKelurahanId ? { kelurahanId: resolvedKelurahanId } : {}),
   };
 };
-
 export const buildDeterministicClusterCode = (
   category: ClusterCategory,
   centerCoords: [number, number]
@@ -420,7 +372,6 @@ export const buildDeterministicClusterCode = (
   const [lng, lat] = centerCoords;
   const quantizedLat = Math.round(lat * 200) / 200;
   const quantizedLng = Math.round(lng * 200) / 200;
-
   const latPrefix = quantizedLat < 0 ? 'S' : 'N';
   const lngPrefix = quantizedLng < 0 ? 'W' : 'E';
   const latToken = Math.abs(Math.round(quantizedLat * 1000))
@@ -429,13 +380,10 @@ export const buildDeterministicClusterCode = (
   const lngToken = Math.abs(Math.round(quantizedLng * 1000))
     .toString()
     .padStart(6, '0');
-
   return `CLU-${category.toUpperCase()}-${latPrefix}${latToken}-${lngPrefix}${lngToken}`;
 };
-
 export const buildClusterDetailCacheKey = (idOrCode: string): string =>
   `${CLUSTER_DETAIL_CACHE_PREFIX}:${idOrCode.trim().toLowerCase()}`;
-
 export const toSocketClusterItem = (
   cluster: ICluster | Record<string, unknown> | unknown
 ): SocketClusterItem => {
@@ -452,7 +400,6 @@ export const toSocketClusterItem = (
       : rawKelurahan
         ? String(rawKelurahan)
         : undefined;
-
   const rawOfficer = raw.assignedOfficerId as
     | { _id?: Types.ObjectId }
     | Types.ObjectId
@@ -464,7 +411,6 @@ export const toSocketClusterItem = (
       : rawOfficer
         ? String(rawOfficer)
         : undefined;
-
   const firstDetectedAt =
     raw.firstDetectedAt instanceof Date
       ? raw.firstDetectedAt.toISOString()
@@ -473,7 +419,6 @@ export const toSocketClusterItem = (
     raw.lastUpdatedAt instanceof Date
       ? raw.lastUpdatedAt.toISOString()
       : new Date(String(raw.lastUpdatedAt ?? Date.now())).toISOString();
-
   return {
     id: rawId,
     clusterCode: String(raw.clusterCode ?? ''),
@@ -498,7 +443,6 @@ export const toSocketClusterItem = (
     lastUpdatedAt,
   };
 };
-
 export const invalidateClusterCaches = async (
   clusterId?: string,
   clusterCode?: string
@@ -510,7 +454,6 @@ export const invalidateClusterCaches = async (
   if (clusterCode) {
     detailKeysToDelete.push(buildClusterDetailCacheKey(clusterCode));
   }
-
   await Promise.all([
     detailKeysToDelete.length > 0
       ? deleteCache(...detailKeysToDelete)
@@ -520,15 +463,12 @@ export const invalidateClusterCaches = async (
     ...MAP_CACHE_PATTERNS.map((pattern) => delCache(pattern)),
   ]);
 };
-
 export const invalidateMapCacheAfterClusterUpsert = async (): Promise<void> => {
   await invalidateClusterCaches();
 };
-
 export const detectClusters = async (): Promise<DetectClustersResult> => {
   const now = new Date();
   const windowStart = new Date(now.getTime() - CLUSTER_TIME_WINDOW_HOURS * 60 * 60 * 1000);
-
   const reportsByCategory: Record<ClusterCategory, LeanClusterReportDoc[]> = {
     ispa: [],
     diare: [],
@@ -536,7 +476,6 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
   let gridSnapshots: PreloadedGridAqiSnapshot[] = [];
   const activeClusterObjectIds: Types.ObjectId[] = [];
   const upsertedClusters: ICluster[] = [];
-
   try {
     const recentReports = (await Report.find({
       reportedAt: { $gte: windowStart },
@@ -547,7 +486,6 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
         '_id category symptoms sickCount severity ageGroups geom location kelurahanId gridCellId reportedAt'
       )
       .lean()) as unknown as LeanClusterReportDoc[];
-
     for (const report of recentReports) {
       if (report.category === 'ispa') {
         reportsByCategory.ispa.push(report);
@@ -555,29 +493,23 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
         reportsByCategory.diare.push(report);
       }
     }
-
     const totalReportsFetched =
       reportsByCategory.ispa.length + reportsByCategory.diare.length;
     const ispaReportCount = reportsByCategory.ispa.length;
     const diareReportCount = reportsByCategory.diare.length;
-
     if (ispaReportCount >= DBSCAN_MIN_POINTS || diareReportCount >= DBSCAN_MIN_POINTS) {
       gridSnapshots = await preloadGridAqiSnapshots();
     }
-
     const clustersByCategory = {
       ispa: 0,
       diare: 0,
     };
-
     for (const category of CLUSTER_CATEGORIES) {
       const categoryReports = reportsByCategory[category];
       if (categoryReports.length < DBSCAN_MIN_POINTS) {
         continue;
       }
-
       const pointFeatures: Array<Feature<Point, DbscanReportPointProps>> = [];
-
       for (const doc of categoryReports) {
         const rawGeo =
           doc.geom?.coordinates?.length === 2 ? doc.geom : doc.location;
@@ -588,7 +520,6 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
         ) {
           continue;
         }
-
         const lng = Number(rawGeo.coordinates[0]);
         const lat = Number(rawGeo.coordinates[1]);
         if (
@@ -601,7 +532,6 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
         ) {
           continue;
         }
-
         pointFeatures.push(
           point([lng, lat], {
             reportId: doc._id.toString(),
@@ -622,26 +552,21 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
           })
         );
       }
-
       if (pointFeatures.length < DBSCAN_MIN_POINTS) {
         pointFeatures.length = 0;
         continue;
       }
-
       const fc: FeatureCollection<Point, DbscanReportPointProps> =
         featureCollection(pointFeatures);
-
       const clusteredFc = clustersDbscan(fc, DBSCAN_MAX_DISTANCE_KM, {
         units: 'kilometers',
         minPoints: DBSCAN_MIN_POINTS,
         mutate: true,
       });
-
       const groupedClusters = new Map<
         number,
         Array<Feature<Point, DbscanReportPointProps>>
       >();
-
       for (const feature of clusteredFc.features) {
         const clusterIdx = feature.properties?.cluster;
         const dbscanType = feature.properties?.dbscan;
@@ -652,7 +577,6 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
         ) {
           continue;
         }
-
         let bucket = groupedClusters.get(clusterIdx);
         if (!bucket) {
           bucket = [];
@@ -660,12 +584,10 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
         }
         bucket.push(feature as Feature<Point, DbscanReportPointProps>);
       }
-
       for (const [, memberFeatures] of groupedClusters.entries()) {
         if (memberFeatures.length < DBSCAN_MIN_POINTS) {
           continue;
         }
-
         const { centerCoords, radiusMeters } =
           calculateCentroidAndRadius(memberFeatures);
         const boundaryPolygon = buildClusterBoundaryPolygon(
@@ -673,13 +595,11 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
           centerCoords,
           radiusMeters
         );
-
         const reportCount = memberFeatures.length;
         let totalSickCount = 0;
         let earliestReportMs = now.getTime();
         const reportObjectIds: Types.ObjectId[] = [];
         const kelurahanFreq = new Map<string, number>();
-
         for (const feat of memberFeatures) {
           const props = feat.properties;
           totalSickCount += props.sickCount || 1;
@@ -696,7 +616,6 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
             );
           }
         }
-
         let majorityKelurahanId: Types.ObjectId | undefined;
         let maxKelCount = 0;
         for (const [kelIdStr, freq] of kelurahanFreq.entries()) {
@@ -706,13 +625,11 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
           }
         }
         kelurahanFreq.clear();
-
         const { averageAqi, kelurahanId } = await resolveClusterAqiAndKelurahan(
           centerCoords,
           gridSnapshots,
           majorityKelurahanId
         );
-
         const dominantSymptoms = extractDominantSymptoms(memberFeatures);
         const vulnerableReportCount = memberFeatures.filter((feature) =>
           feature.properties.ageGroups.some((group) =>
@@ -735,31 +652,28 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
           vulnerableGroupDominant:
             vulnerableReportCount >= Math.ceil(reportCount / 2),
         });
-
         const deterministicCode = buildDeterministicClusterCode(
           category,
           centerCoords
         );
-
-        const existingNearbyCluster = await Cluster.findOne({
-          $or: [
-            { clusterCode: deterministicCode },
-            {
-              category,
-              status: { $in: ['active', 'monitoring', 'verified'] },
-              center: {
-                $near: {
-                  $geometry: {
-                    type: 'Point',
-                    coordinates: centerCoords,
-                  },
-                  $maxDistance: DBSCAN_MAX_DISTANCE_METERS,
+        let existingNearbyCluster = await Cluster.findOne({
+          clusterCode: deterministicCode,
+        }).select('_id clusterCode firstDetectedAt status');
+        if (!existingNearbyCluster) {
+          existingNearbyCluster = await Cluster.findOne({
+            category,
+            status: { $in: ['active', 'monitoring', 'verified'] },
+            center: {
+              $near: {
+                $geometry: {
+                  type: 'Point',
+                  coordinates: centerCoords,
                 },
+                $maxDistance: DBSCAN_MAX_DISTANCE_METERS,
               },
             },
-          ],
-        }).select('_id clusterCode firstDetectedAt status');
-
+          }).select('_id clusterCode firstDetectedAt status');
+        }
         const targetClusterCode =
           existingNearbyCluster?.clusterCode ?? deterministicCode;
         const firstDetectedAt =
@@ -768,7 +682,6 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
           existingNearbyCluster?.status === 'resolved'
             ? 'active'
             : existingNearbyCluster?.status ?? 'active';
-
         const upsertedCluster = await Cluster.findOneAndUpdate(
           { clusterCode: targetClusterCode },
           {
@@ -799,16 +712,14 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
           },
           {
             upsert: true,
-            new: true,
+            returnDocument: 'after',
             setDefaultsOnInsert: true,
           }
         );
-
         if (upsertedCluster) {
           activeClusterObjectIds.push(upsertedCluster._id);
           upsertedClusters.push(upsertedCluster);
           clustersByCategory[category] += 1;
-
           if (reportObjectIds.length > 0) {
             await Report.updateMany(
               { _id: { $in: reportObjectIds } },
@@ -817,11 +728,9 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
           }
         }
       }
-
       groupedClusters.clear();
       pointFeatures.length = 0;
     }
-
     const staleResolveResult = await Cluster.updateMany(
       {
         status: 'active',
@@ -837,14 +746,11 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
         },
       }
     );
-
     const resolvedStaleCount = staleResolveResult.modifiedCount ?? 0;
     const hasDatabaseChanges =
       upsertedClusters.length > 0 || resolvedStaleCount > 0;
-
     if (hasDatabaseChanges) {
       await invalidateMapCacheAfterClusterUpsert();
-
       if (upsertedClusters.length > 0) {
         emitClusterDetected({
           event: SOCKET_EVENTS.CLUSTER_DETECTED,
@@ -857,7 +763,6 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
         });
       }
     }
-
     return {
       windowStartIso: windowStart.toISOString(),
       windowEndIso: now.toISOString(),
@@ -880,7 +785,6 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
     activeClusterObjectIds.length = 0;
   }
 };
-
 export interface ClusterQueryFilter {
   category?: string;
   kategori?: string;
@@ -892,35 +796,29 @@ export interface ClusterQueryFilter {
   startDate?: string;
   endDate?: string;
 }
-
 export interface UpdateClusterStatusInput {
   status?: string;
   assignedOfficerId?: string | null;
 }
-
 const RISK_STATUS_CANONICAL_MAP: Record<string, ClusterRiskStatus> = {
   waspada: 'Waspada',
   siaga: 'Siaga',
   prioritas: 'Prioritas',
 };
-
 const VALID_LEGACY_RISK_LEVELS: readonly ClusterLegacyRiskLevel[] = [
   'low',
   'moderate',
   'high',
   'outbreak',
 ] as const;
-
 const VALID_CLUSTER_STATUSES: readonly ClusterStatus[] = [
   'active',
   'monitoring',
   'verified',
   'resolved',
 ] as const;
-
 export const listClusters = async (filter: ClusterQueryFilter = {}) => {
   const query: Record<string, unknown> = {};
-
   const category = (filter.category ?? filter.kategori ?? '').trim().toLowerCase();
   if (category) {
     if (category !== 'ispa' && category !== 'diare') {
@@ -931,7 +829,6 @@ export const listClusters = async (filter: ClusterQueryFilter = {}) => {
     }
     query.category = category;
   }
-
   const rawLevel = (
     filter.level ??
     filter.riskLevel ??
@@ -940,7 +837,6 @@ export const listClusters = async (filter: ClusterQueryFilter = {}) => {
   )
     .trim()
     .toLowerCase();
-
   let normalizedLevelCacheToken: string | undefined;
   if (rawLevel) {
     if (RISK_STATUS_CANONICAL_MAP[rawLevel]) {
@@ -958,10 +854,8 @@ export const listClusters = async (filter: ClusterQueryFilter = {}) => {
       );
     }
   }
-
   const rawStatus = (filter.status ?? '').trim().toLowerCase();
   let normalizedStatusCacheToken = 'default_active_monitoring';
-
   if (rawStatus) {
     if (rawStatus === 'all') {
       normalizedStatusCacheToken = 'all';
@@ -977,7 +871,6 @@ export const listClusters = async (filter: ClusterQueryFilter = {}) => {
   } else {
     query.status = { $in: ['active', 'monitoring', 'verified'] };
   }
-
   let normalizedKelurahanId: string | undefined;
   if (filter.kelurahanId && filter.kelurahanId.trim() !== '') {
     const trimmedKel = filter.kelurahanId.trim();
@@ -987,7 +880,6 @@ export const listClusters = async (filter: ClusterQueryFilter = {}) => {
     query.kelurahanId = new Types.ObjectId(trimmedKel);
     normalizedKelurahanId = trimmedKel;
   }
-
   const dateRange: Record<string, Date> = {};
   if (filter.startDate) {
     const startDate = new Date(filter.startDate);
@@ -1006,7 +898,6 @@ export const listClusters = async (filter: ClusterQueryFilter = {}) => {
   if (Object.keys(dateRange).length > 0) {
     query.lastUpdatedAt = dateRange;
   }
-
   const cacheKey = buildFilterCacheKey(CLUSTER_LIST_CACHE_PREFIX, {
     category: category || undefined,
     level: normalizedLevelCacheToken,
@@ -1015,69 +906,54 @@ export const listClusters = async (filter: ClusterQueryFilter = {}) => {
     startDate: filter.startDate,
     endDate: filter.endDate,
   });
-
   const cachedClusters = await getCache<unknown[]>(cacheKey);
   if (cachedClusters) {
     return cachedClusters;
   }
-
   const clusters = await Cluster.find(query)
     .populate('kelurahanId', 'code name kecamatan kota provinsi')
     .populate('assignedOfficerId', 'name email role phone')
     .sort({ lastUpdatedAt: -1 })
     .lean();
-
   await setCache(cacheKey, clusters, CLUSTER_CACHE_TTL_SECONDS);
-
   return clusters;
 };
-
 export const getClusterByIdOrCode = async (idOrCode: string) => {
   const trimmed = idOrCode.trim();
   const requestedCacheKey = buildClusterDetailCacheKey(trimmed);
-
   const cachedCluster = await getCache<Record<string, unknown>>(requestedCacheKey);
   if (cachedCluster) {
     return cachedCluster;
   }
-
   const query = Types.ObjectId.isValid(trimmed)
     ? { _id: new Types.ObjectId(trimmed) }
     : { clusterCode: trimmed.toUpperCase() };
-
   const cluster = await Cluster.findOne(query)
     .populate('kelurahanId', 'code name kecamatan kota provinsi')
     .populate('assignedOfficerId', 'name email role phone')
     .lean();
-
   if (!cluster) {
     return null;
   }
-
   const idCacheKey = buildClusterDetailCacheKey(cluster._id.toString());
   const codeCacheKey = buildClusterDetailCacheKey(cluster.clusterCode);
-
   await Promise.all([
     setCache(idCacheKey, cluster, CLUSTER_CACHE_TTL_SECONDS),
     idCacheKey !== codeCacheKey
       ? setCache(codeCacheKey, cluster, CLUSTER_CACHE_TTL_SECONDS)
       : Promise.resolve(),
   ]);
-
   return cluster;
 };
-
 export const getClusterReportTrend = async (idOrCode: string) => {
   const trimmed = idOrCode.trim();
   const query = Types.ObjectId.isValid(trimmed)
     ? { _id: new Types.ObjectId(trimmed) }
     : { clusterCode: trimmed.toUpperCase() };
   const cluster = await Cluster.findOne(query).select('_id').lean();
-
   if (!cluster) {
     throw new AppError('Data klaster tidak ditemukan.', 404);
   }
-
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   const startDate = new Date(today);
@@ -1106,7 +982,7 @@ export const getClusterReportTrend = async (idOrCode: string) => {
   const countsByDate = new Map(
     dailyCounts.map((item) => [item._id, item.count])
   );
-  const days = Array.from({ length: 7 }, (_, index) => {
+  const days = Array.from({ length: 7 }, (*_*, index) => {
     const date = new Date(startDate);
     date.setUTCDate(startDate.getUTCDate() + index);
     const dateKey = date.toISOString().slice(0, 10);
@@ -1115,10 +991,8 @@ export const getClusterReportTrend = async (idOrCode: string) => {
       count: countsByDate.get(dateKey) ?? 0,
     };
   });
-
   return { days, generatedAt: new Date().toISOString() };
 };
-
 export const updateClusterStatus = async (
   idOrCode: string,
   input: UpdateClusterStatusInput,
@@ -1128,7 +1002,6 @@ export const updateClusterStatus = async (
   if (!trimmed) {
     throw new AppError('Parameter ID atau kode klaster wajib disertakan.', 400);
   }
-
   const rawStatus = (input.status ?? '').toString().trim().toLowerCase();
   if (!VALID_CLUSTER_STATUSES.includes(rawStatus as ClusterStatus)) {
     throw new AppError(
@@ -1137,20 +1010,16 @@ export const updateClusterStatus = async (
     );
   }
   const nextStatus = rawStatus as ClusterStatus;
-
   const lookupQuery = Types.ObjectId.isValid(trimmed)
     ? { _id: new Types.ObjectId(trimmed) }
     : { clusterCode: trimmed.toUpperCase() };
-
   const existingCluster = await Cluster.findOne(lookupQuery);
   if (!existingCluster) {
     throw new AppError('Data klaster tidak ditemukan.', 404);
   }
-
   const previousStatus: ClusterStatus = existingCluster.status;
   existingCluster.status = nextStatus;
   existingCluster.lastUpdatedAt = new Date();
-
   if (input.assignedOfficerId !== undefined) {
     if (input.assignedOfficerId === null || String(input.assignedOfficerId).trim() === '') {
       existingCluster.set('assignedOfficerId', undefined);
@@ -1172,9 +1041,7 @@ export const updateClusterStatus = async (
   ) {
     existingCluster.assignedOfficerId = new Types.ObjectId(officer.officerId);
   }
-
   await existingCluster.save();
-
   if (existingCluster.reportIds && existingCluster.reportIds.length > 0) {
     const mappedReportStatus =
       nextStatus === 'resolved'
@@ -1184,7 +1051,6 @@ export const updateClusterStatus = async (
           : nextStatus === 'monitoring'
             ? 'in_progress'
           : undefined;
-
     if (mappedReportStatus) {
       await Report.updateMany(
         {
@@ -1197,19 +1063,14 @@ export const updateClusterStatus = async (
       );
     }
   }
-
   const clusterIdStr = existingCluster._id.toString();
   const clusterCodeStr = existingCluster.clusterCode;
-
   await invalidateClusterCaches(clusterIdStr, clusterCodeStr);
-
   const populatedCluster = await Cluster.findById(existingCluster._id)
     .populate('kelurahanId', 'code name kecamatan kota provinsi')
     .populate('assignedOfficerId', 'name email role phone')
     .lean();
-
   const finalCluster = populatedCluster ?? existingCluster.toObject();
-
   emitClusterUpdated({
     event: SOCKET_EVENTS.CLUSTER_UPDATED,
     clusterId: clusterIdStr,
@@ -1233,6 +1094,5 @@ export const updateClusterStatus = async (
     cluster: toSocketClusterItem(finalCluster),
     updatedAt: existingCluster.lastUpdatedAt.toISOString(),
   });
-
   return finalCluster;
 };
