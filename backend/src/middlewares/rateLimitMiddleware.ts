@@ -4,10 +4,10 @@ import type { Request, Response } from 'express';
 import { connectRedis, redisClient } from '../config/redis.js';
 
 export const REPORT_COOLDOWN_WINDOW_MS =
-  Number(process.env.REPORT_RATE_LIMIT_WINDOW_MS) || 60 * 60 * 1000; // Default: 1 jam (3.600.000 ms)
+  Number(process.env.REPORT_RATE_LIMIT_WINDOW_MS) || 60 * 60 * 1000;
 
 export const REPORT_COOLDOWN_MAX_REQUESTS =
-  Number(process.env.REPORT_RATE_LIMIT_MAX) || 1; // Default: 1 laporan per jam per device_hash
+  Number(process.env.REPORT_RATE_LIMIT_MAX) || 1;
 
 export const extractDeviceHashFromRequest = (req: Request): string => {
   const body = (req.body ?? {}) as Record<string, unknown>;

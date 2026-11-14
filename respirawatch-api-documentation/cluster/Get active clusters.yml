@@ -1,0 +1,15 @@
+info:
+  name: Get active clusters
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://localhost:4000/api/clusters
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
