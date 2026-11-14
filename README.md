@@ -6,11 +6,24 @@ Tahun ini lebih dari 14 juta orang di Indonesia kena ISPA. Masalahnya, data kasu
 
 RespiraWatch memotong jeda itu. Warga mengirim laporan gejala ISPA atau diare dari HP, tanpa daftar akun. Laporan itu digabung dengan data kualitas udara dari Open-Meteo. Setiap 10 menit, sistem mengecek apakah ada laporan yang mengumpul di satu area. Kalau ada, area itu ditandai di peta lengkap dengan level risikonya, jadi petugas tahu harus turun ke mana dulu.
 
-- Demo live: ``
-- API: ``
+- Demo live: [respirawatch.web.id](https://respirawatch.web.id/)
+- API: [api.respirawatch.web.id](https://api.respirawatch.web.id/api/health) (cek status lewat `/api/health`)
 - Video demo: ``
 
-<!-- tambah dokumentasi!!!  -->
+<table>
+  <tr>
+    <th>Lapor gejala (warga)</th>
+    <th>Peta publik</th>
+    <th>Dasbor petugas</th>
+    <th>Detail klaster + ringkasan AI</th>
+  </tr>
+  <tr>
+    <td><img width="200" alt="Form lapor gejala" src="https://github.com/user-attachments/assets/e880102a-3a8e-4833-86de-8b221413cfdf" /></td>
+    <td><img width="200" alt="Peta publik dengan heatmap" src="https://github.com/user-attachments/assets/a8a29760-962a-4548-8346-2ae3fdb9def3" /></td>
+    <td><img width="200" alt="Dasbor petugas" src="https://github.com/user-attachments/assets/ba043d31-46b9-472c-8129-b101b3136719" /></td>
+    <td><img width="200" alt="Detail klaster dan ringkasan AI" src="https://github.com/user-attachments/assets/536d1bf8-4c3c-40df-a029-60e3fb8cf77d" /></td>
+  </tr>
+</table>
 
 ---
 
@@ -18,7 +31,7 @@ RespiraWatch memotong jeda itu. Warga mengirim laporan gejala ISPA atau diare da
 
 1. [Tim](#tim)
 2. [Tentang Aplikasi](#tentang-aplikasi)
-3. [Fitur yang Sudah Jalan](#fitur-yang-sudah-jalan)
+3. [Fitur yang Telah Berjalan](#fitur-yang-telah-berjalan)
 4. [Teknologi](#teknologi)
 5. [Arsitektur dan Alur Data](#arsitektur-dan-alur-data)
 6. [Struktur Repo](#struktur-repo)
@@ -46,7 +59,7 @@ RespiraWatch memotong jeda itu. Warga mengirim laporan gejala ISPA atau diare da
 
 ## Tentang Aplikasi
 
-Kategori: Web
+Kategori: Mobile Web
 
 Nama Aplikasi: RespiraWatch
 
@@ -57,7 +70,7 @@ Track: Inclusive Health and Well-being
 
 ### Masalah yang di angkat
 
-Data Kementerian Kesehatan per pertengahan Oktober 2026 mengungkap salah satu data penting yaitu sebanyak **14.088.948 jiwa terpapar ISPA***. Krisis ini kian bereskalasi akibat kabut asap karhutla yang menyumbang **401.586 kasus tambahan di 63 kabupaten/kota** hanya dalam waktu kurang dari tiga minggu (per 2 November).
+Data Kementerian Kesehatan per pertengahan Oktober 2026 mengungkap salah satu data penting yaitu sebanyak **14.088.948 jiwa terpapar ISPA**. Krisis ini kian bereskalasi akibat kabut asap karhutla yang menyumbang **401.586 kasus tambahan di 63 kabupaten/kota** hanya dalam waktu kurang dari tiga minggu (per 2 November).
 
 Sayangnya, statistik resmi tersebut memiliki keterbatasan akibat fenomena _undercounting_ (kasus yang tidak tercatat). Realitas di lapangan menunjukkan tingginya jumlah kasus ISPA yang luput dari pemantauan fasilitas kesehatan formal. Masyarakat yang merawat anggota keluarganya di rumah karena menganggapnya "sekadar flu biasa", atau warga di area dengan akses kesehatan terbatas, pada akhirnya tidak terinklusi dalam data nasional. Akibatnya, terdapat _blind spot_ (titik buta) yang signifikan dalam pemetaan krisis ini.
 
@@ -86,34 +99,33 @@ Untuk memutus rantai keterlambatan deteksi tersebut, kami menghadirkan RespiraWa
 ## Fitur yang telah berjalan
 ### Untuk warga
 
-- [] **Lapor tanpa akun.** Pilih kategori ISPA atau diare, centang gejala lewat ikon bergambar (batuk, demam, pilek, sesak, BAB cair, muntah), isi jumlah orang sakit dan kelompok usia.
-- [] **Lapor dengan cerita (AI).** Ketik keluhan bebas seperti "anak batuk 3 hari, napasnya bunyi". Gemini membaca teksnya lalu menyarankan kategori, gejala, dan tingkat keparahan. Warga tinggal pakai sarannya atau mengubahnya dulu.
-- [] **Input suara.** Keluhan bisa diucapkan lewat Web Speech API dalam bahasa Indonesia.
-- [] **Pilih lokasi di peta.** Lokasi diambil dari GPS, atau ditandai manual di peta kalau GPS ditolak.
-- [] **Halaman konfirmasi** sebelum laporan dikirim, lalu halaman sukses setelahnya.
-- [] **Peta publik.** Heatmap laporan, lapisan AQI per grid, area klaster, skor risiko area, titik api karhutla dari NASA FIRMS, filter, dan legenda. Titik laporan selalu digeser 100-200 m demi privasi.
-- [] **Kartu AQI.** Menampilkan AQI terdekat, status area, dan saran aktivitas.
+- [x] **Lapor tanpa akun.** Pilih kategori ISPA atau diare, centang gejala lewat ikon bergambar (batuk, demam, pilek, sesak, BAB cair, muntah), isi jumlah orang sakit dan kelompok usia.
+- [x] **Lapor dengan cerita (AI).** Ketik keluhan bebas seperti "anak batuk 3 hari, napasnya bunyi". Gemini membaca teksnya lalu menyarankan kategori, gejala, dan tingkat keparahan. Warga tinggal pakai sarannya atau mengubahnya dulu.
+- [x] **Input suara.** Keluhan bisa diucapkan lewat Web Speech API dalam bahasa Indonesia.
+- [x] **Pilih lokasi di peta.** Lokasi diambil dari GPS, atau ditandai manual di peta kalau GPS ditolak.
+- [x] **Halaman konfirmasi** sebelum laporan dikirim, lalu halaman sukses setelahnya.
+- [x] **Peta publik.** Heatmap laporan, lapisan AQI per grid, area klaster, skor risiko area, titik api karhutla dari NASA FIRMS, filter, dan legenda. Titik laporan selalu digeser 100-200 m demi privasi.
+- [x] **Kartu AQI.** Menampilkan AQI terdekat, status area, dan saran aktivitas.
 
 ### Untuk petugas
 
-- [] **Login petugas** dengan JWT dan pembagian akses per peran.
-- [] **Dasbor real-time.** Laporan dan klaster baru langsung masuk lewat Socket.io tanpa perlu refresh. Ada indikator status koneksinya juga.
-- [] **Detail klaster.** Jumlah laporan, radius, lokasi, waktu, dan data cuaca setempat.
-- [] **Ringkasan klaster dari AI.** Isinya judul, ringkasan situasi, hubungan dengan kondisi lingkungan, usulan intervensi lapangan, dan catatan urgensi.
-- [] **Ubah status klaster:** Aktif, Dipantau, atau Selesai.
-- [] **Ekspor CSV** laporan 72 jam terakhir dari dasbor, plus ekspor CSV per klaster lewat API.
-- [] **Halaman tren** kualitas udara.
-- [] **Halaman laporan masuk** untuk meninjau laporan warga.
-- [] **Kelola data** (khusus admin): akun petugas, data kelurahan, dan penugasan wilayah.
+- [x] **Login petugas** dengan JWT dan pembagian akses per peran.
+- [x] **Dasbor real-time.** Laporan dan klaster baru langsung masuk lewat Socket.io tanpa perlu refresh. Ada indikator status koneksinya juga.
+- [x] **Detail klaster.** Jumlah laporan, radius, lokasi, waktu, dan data cuaca setempat.
+- [x] **Ringkasan klaster dari AI.** Isinya judul, ringkasan situasi, hubungan dengan kondisi lingkungan, usulan intervensi lapangan, dan catatan urgensi.
+- [x] **Ubah status klaster:** Aktif, Dipantau, atau Selesai.
+- [x] **Ekspor CSV** laporan 72 jam terakhir dari dasbor, plus ekspor CSV per klaster lewat API.
+- [x] **Halaman tren** kualitas udara.
+- [x] **Halaman laporan masuk** untuk meninjau laporan warga.
+- [x] **Kelola data** (khusus admin): akun petugas, data kelurahan, dan penugasan wilayah.
 
 ### Di belakang layar
 
-- [] **Anti-spam per perangkat.** Satu perangkat cuma bisa melapor sekali per jam. Laporan berikutnya dari perangkat yang sama akan memperbarui laporan lama, jadi tidak ada data dobel.
-- [] **Sinkron AQI otomatis** tiap jam untuk PM2.5, PM10, US AQI, European AQI, CO, NO2, SO2, dan O3.
-- [] **Skor risiko area 0-100** yang dihitung ulang tiap jam dari laporan, AQI, dan cuaca.
-- [] **Deteksi klaster otomatis** tiap 10 menit dengan DBSCAN. ISPA dan diare dihitung terpisah karena penyebab dan penanganannya berbeda.
-- [] **Cache Redis** untuk peta publik, AQI, skor risiko, hotspot, dan ringkasan AI, supaya aplikasi tetap cepat walaupun yang mengakses banyak.
-- [] **Tetap jalan walau layanan luar bermasalah.** Kalau Gemini error atau API key-nya kosong, klasifikasi beralih ke kamus gejala dan ringkasan beralih ke template berbasis data. Kalau Redis mati, server tetap hidup tanpa cache.
+- [x] **Anti-spam per perangkat.** Satu perangkat cuma bisa melapor sekali per jam. Laporan berikutnya dari perangkat yang sama akan memperbarui laporan lama, jadi tidak ada data dobel.
+- [x] **Sinkron AQI otomatis** tiap jam untuk PM2.5, PM10, US AQI, European AQI, CO, NO2, SO2, dan O3.
+- [x] **Skor risiko area 0-100** yang dihitung ulang tiap jam dari laporan, AQI, dan cuaca.
+- [x] **Deteksi klaster otomatis** tiap 10 menit dengan DBSCAN. ISPA dan diare dihitung terpisah karena penyebab dan penanganannya berbeda.
+- [x] **Cache Redis** untuk peta publik, AQI, skor risiko, hotspot, dan ringkasan AI, supaya aplikasi tetap cepat walaupun yang mengakses banyak.
 
 ---
 
