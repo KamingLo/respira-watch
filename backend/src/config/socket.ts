@@ -183,6 +183,13 @@ export const extractHandshakeToken = (socket: RespiraSocket): string | null => {
   return null;
 };
 
+/**
+ * Menginisialisasi server Socket.io di atas HTTP server Express dengan
+ * autentikasi JWT ketat pada fase handshake (`io.use(...)`).
+ *
+ * @param httpServer - Instance `http.Server` Node.js
+ * @returns Instance `SocketIOServer` yang telah dikonfigurasi
+ */
 export const initSocketServer = (httpServer: HttpServer): RespiraSocketServer => {
   if (ioInstance) {
     return ioInstance;
@@ -199,6 +206,11 @@ export const initSocketServer = (httpServer: HttpServer): RespiraSocketServer =>
     transports: ['websocket', 'polling'],
   });
 
+  /**
+   * Middleware Autentikasi JWT pada fase Handshake WebSocket.
+   * Menolak koneksi sebelum terbentuk apabila token tidak disertakan,
+   * tidak valid/kedaluwarsa, atau akun petugas sudah dinonaktifkan.
+   */
   io.use(async (socket: RespiraSocket, next) => {
     try {
       const token = extractHandshakeToken(socket);
@@ -309,8 +321,19 @@ export const initSocketServer = (httpServer: HttpServer): RespiraSocketServer =>
   return io;
 };
 
+/**
+ * Mengambil instance `SocketIOServer` yang sedang aktif.
+ *
+ * @returns Instance `RespiraSocketServer` atau `null` jika belum diinisialisasi
+ */
 export const getSocketServer = (): RespiraSocketServer | null => ioInstance;
 
+/**
+ * Mengirimkan broadcast event `report:new` ke seluruh petugas terautentikasi
+ * di Dasbor Petugas saat laporan warga baru masuk atau diperbarui.
+ *
+ * @param payload - Data laporan baru beserta koordinat presisi (`geom`)
+ */
 export const emitNewReport = (payload: NewReportSocketPayload): void => {
   if (!ioInstance) {
     return;
@@ -322,6 +345,12 @@ export const emitNewReport = (payload: NewReportSocketPayload): void => {
   );
 };
 
+/**
+ * Mengirimkan broadcast event `cluster:detected` ke seluruh petugas terautentikasi
+ * ketika siklus DBSCAN mendeteksi klaster penyakit baru atau memperbarui klaster aktif.
+ *
+ * @param payload - Ringkasan hasil deteksi klaster dan daftar klaster terbaru
+ */
 export const emitClusterDetected = (payload: ClusterDetectedSocketPayload): void => {
   if (!ioInstance) {
     return;
@@ -335,6 +364,12 @@ export const emitClusterDetected = (payload: ClusterDetectedSocketPayload): void
   );
 };
 
+/**
+ * Mengirimkan broadcast event `cluster:updated` ke seluruh petugas terautentikasi
+ * ketika status penanganan suatu klaster diubah melalui `PATCH /api/clusters/:id`.
+ *
+ * @param payload - Informasi perubahan status klaster dan data klaster terbaru
+ */
 export const emitClusterUpdated = (payload: ClusterUpdatedSocketPayload): void => {
   if (!ioInstance) {
     return;

@@ -723,24 +723,25 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
           centerCoords
         );
 
-        const existingNearbyCluster = await Cluster.findOne({
-          $or: [
-            { clusterCode: deterministicCode },
-            {
-              category,
-              status: { $in: ['active', 'monitoring'] },
-              center: {
-                $near: {
-                  $geometry: {
-                    type: 'Point',
-                    coordinates: centerCoords,
-                  },
-                  $maxDistance: DBSCAN_MAX_DISTANCE_METERS,
+        let existingNearbyCluster = await Cluster.findOne({
+          clusterCode: deterministicCode,
+        }).select('_id clusterCode firstDetectedAt status');
+
+        if (!existingNearbyCluster) {
+          existingNearbyCluster = await Cluster.findOne({
+            category,
+            status: { $in: ['active', 'monitoring'] },
+            center: {
+              $near: {
+                $geometry: {
+                  type: 'Point',
+                  coordinates: centerCoords,
                 },
+                $maxDistance: DBSCAN_MAX_DISTANCE_METERS,
               },
             },
-          ],
-        }).select('_id clusterCode firstDetectedAt status');
+          }).select('_id clusterCode firstDetectedAt status');
+        }
 
         const targetClusterCode =
           existingNearbyCluster?.clusterCode ?? deterministicCode;
@@ -781,7 +782,7 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
           },
           {
             upsert: true,
-            new: true,
+            returnDocument: 'after',
             setDefaultsOnInsert: true,
           }
         );
