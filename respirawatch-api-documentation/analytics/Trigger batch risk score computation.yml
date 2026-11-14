@@ -1,0 +1,18 @@
+info:
+  name: Trigger batch risk score computation
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: http://localhost:4000/api/analytics/risk-scores/compute
+  headers:
+    - name: Content-Type
+      value: application/json
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
