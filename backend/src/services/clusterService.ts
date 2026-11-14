@@ -982,7 +982,7 @@ export const getClusterReportTrend = async (idOrCode: string) => {
   const countsByDate = new Map(
     dailyCounts.map((item) => [item._id, item.count])
   );
-  const days = Array.from({ length: 7 }, (*_*, index) => {
+  const days = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(startDate);
     date.setUTCDate(startDate.getUTCDate() + index);
     const dateKey = date.toISOString().slice(0, 10);
