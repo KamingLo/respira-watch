@@ -317,6 +317,9 @@ export default function ReportForm() {
       ageGroups: [getAgeGroupForAge(parsedAge)],
       severity,
       location: location.address,
+      ...(location.locationSuggestion
+        ? { locationSuggestion: location.locationSuggestion }
+        : {}),
       ...(location.kelurahanId ? { kelurahanId: location.kelurahanId } : {}),
       geom: {
         type: "Point" as const,
@@ -532,6 +535,17 @@ export default function ReportForm() {
                   <span className="font-bold">Lokasi dipilih:</span>
                   <br />
                   {location.address}
+                  {location.locationSuggestion && !location.kelurahanId && (
+                    <>
+                      <br />
+                      <span className="mt-1 inline-block">
+                        Perkiraan wilayah: {location.locationSuggestion.name}
+                        {location.locationSuggestion.kecamatan
+                          ? ` · ${location.locationSuggestion.kecamatan}`
+                          : ""}
+                      </span>
+                    </>
+                  )}
                 </p>
               )}
             </Card>

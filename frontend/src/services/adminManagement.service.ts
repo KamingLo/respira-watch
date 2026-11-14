@@ -45,6 +45,27 @@ export interface ManagedKelurahan {
   baselineRiskLevel: BaselineRiskLevel;
 }
 
+export interface UnmappedReport {
+  _id: string;
+  category: string;
+  symptoms: string[];
+  sickCount: number;
+  age: number;
+  ageGroups?: string[];
+  severity: string;
+  description?: string;
+  address?: string;
+  locationSuggestion?: {
+    name: string;
+    kecamatan?: string;
+    kota?: string;
+    provinsi?: string;
+  };
+  geom: GeoPoint;
+  status: string;
+  reportedAt: string | Date;
+}
+
 export interface CreateOfficerPayload {
   name: string;
   nip: string;
@@ -79,8 +100,7 @@ export interface CreateKelurahanPayload {
   baselineRiskLevel: BaselineRiskLevel;
 }
 
-export interface UpdateKelurahanPayload
-  extends Omit<CreateKelurahanPayload, "areaSqKm"> {
+export interface UpdateKelurahanPayload extends Omit<CreateKelurahanPayload, "areaSqKm"> {
   areaSqKm?: number | null;
 }
 
@@ -94,34 +114,17 @@ const withToken = (token: string) => ({
   headers: { Authorization: `Bearer ${token}` },
 });
 
-const unwrapResponse = <T>(
-  response: ApiResponse<T>,
-  fallbackMessage: string
-): T => {
-  if (!response.success) {
-    throw new Error(response.message || fallbackMessage);
-  }
+const unwrapResponse = <T>(response: ApiResponse<T>, fallbackMessage: string): T => {
+  if (!response.success) throw new Error(response.message || fallbackMessage);
   return response.data;
 };
 
-export const getManagedOfficers = async (
-  token: string
-): Promise<ManagedOfficer[]> => {
+export const getManagedOfficers = async (token: string): Promise<ManagedOfficer[]> => {
   const response = await apiClient.get<ApiResponse<ManagedOfficer[]>>(
     "/api/officers",
     withToken(token)
   );
   return unwrapResponse(response.data, "Gagal memuat daftar petugas.");
-};
-
-export const getManagedKelurahans = async (
-  token: string
-): Promise<ManagedKelurahan[]> => {
-  const response = await apiClient.get<ApiResponse<ManagedKelurahan[]>>(
-    "/api/kelurahans",
-    withToken(token)
-  );
-  return unwrapResponse(response.data, "Gagal memuat daftar kelurahan.");
 };
 
 export const createManagedOfficer = async (
@@ -173,6 +176,14 @@ export const deleteManagedOfficer = async (
   unwrapResponse(response.data, "Gagal menghapus petugas.");
 };
 
+export const getManagedKelurahans = async (token: string): Promise<ManagedKelurahan[]> => {
+  const response = await apiClient.get<ApiResponse<ManagedKelurahan[]>>(
+    "/api/kelurahans",
+    withToken(token)
+  );
+  return unwrapResponse(response.data, "Gagal memuat daftar kelurahan.");
+};
+
 export const createManagedKelurahan = async (
   token: string,
   payload: CreateKelurahanPayload
@@ -207,4 +218,18 @@ export const deleteManagedKelurahan = async (
     withToken(token)
   );
   unwrapResponse(response.data, "Gagal menghapus kelurahan.");
+};
+
+export const getUnmappedReports = async (token: string): Promise<UnmappedReport[]> => {
+  const response = await apiClient.get<ApiResponse<UnmappedReport[]>>(
+    "/api/reports",
+    {
+      ...withToken(token),
+      params: { unmapped: true },
+    }
+  );
+  return unwrapResponse(
+    response.data,
+    "Gagal memuat laporan yang belum memiliki kelurahan."
+  );
 };

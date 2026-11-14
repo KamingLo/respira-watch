@@ -1,5 +1,6 @@
 import apiClient from "@/lib/api/apiClient";
 import { getOfficerToken } from "@/features/auth/authToken";
+import type { ReportLocationSuggestion } from "@/types/report.types";
 
 export type OfficerReportStatus =
   | "pending"
@@ -18,6 +19,7 @@ export interface OfficerReport {
   severity: string;
   description: string;
   address?: string;
+  locationSuggestion?: ReportLocationSuggestion;
   status: OfficerReportStatus;
   reportedAt: string;
   geom: {
@@ -35,6 +37,11 @@ interface OfficerReportApiResponse<T> {
   data: T;
 }
 
+export interface OfficerReportFilters {
+  status?: OfficerReportStatus;
+  unmapped?: boolean;
+}
+
 const officerHeaders = () => {
   const token = getOfficerToken();
   if (!token) {
@@ -44,13 +51,16 @@ const officerHeaders = () => {
 };
 
 export const getOfficerReports = async (
-  status?: OfficerReportStatus
+  filters: OfficerReportFilters = {}
 ): Promise<OfficerReport[]> => {
   const response = await apiClient.get<
     OfficerReportApiResponse<OfficerReport[]>
   >("/api/reports", {
     headers: officerHeaders(),
-    params: status ? { status } : undefined,
+    params: {
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.unmapped ? { unmapped: "true" } : {}),
+    },
   });
   if (!response.data.success) {
     throw new Error(response.data.message || "Gagal memuat laporan warga.");
