@@ -5,7 +5,7 @@ export type ClusterCategory = 'ispa' | 'diare';
 export type ClusterRiskStatus = 'Waspada' | 'Siaga' | 'Prioritas';
 export type ClusterRiskColor = 'Kuning' | 'Oranye' | 'Merah';
 export type ClusterLegacyRiskLevel = 'low' | 'moderate' | 'high' | 'outbreak';
-export type ClusterStatus = 'active' | 'monitoring' | 'resolved';
+export type ClusterStatus = 'active' | 'monitoring' | 'verified' | 'resolved';
 
 export interface ICluster extends Document {
   clusterCode: string;
@@ -85,7 +85,7 @@ const ClusterSchema = new Schema<ICluster>(
     },
     status: {
       type: String,
-      enum: ['active', 'monitoring', 'resolved'],
+      enum: ['active', 'monitoring', 'verified', 'resolved'],
       default: 'active',
       index: true,
     },

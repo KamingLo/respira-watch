@@ -14,8 +14,25 @@ export type ReportSeverity =
   | 'moderate'
   | 'severe'
   | 'critical';
-
+export type ReportAgeGroup = 'balita' | 'anak' | 'remaja' | 'dewasa' | 'lansia';
 export type ReportStatus = 'pending' | 'verified' | 'in_progress' | 'resolved' | 'rejected';
+
+export interface IReportLocationSuggestion {
+  name: string;
+  kecamatan?: string;
+  kota?: string;
+  provinsi?: string;
+}
+
+const ReportLocationSuggestionSchema = new Schema<IReportLocationSuggestion>(
+  {
+    name: { type: String, required: true, trim: true },
+    kecamatan: { type: String, trim: true },
+    kota: { type: String, trim: true },
+    provinsi: { type: String, trim: true },
+  },
+  { _id: false }
+);
 
 export interface IReport extends Document {
   reporterName: string;
@@ -24,6 +41,7 @@ export interface IReport extends Document {
   symptoms: string[];
   sickCount: number;
   age: number;
+  ageGroups: ReportAgeGroup[];
   pollutionType?: 'open_burning' | 'industrial_smoke' | 'vehicle_emission' | 'dust' | 'odor' | 'other';
   severity: ReportSeverity;
   deviceHash: string;
@@ -32,6 +50,7 @@ export interface IReport extends Document {
   geom: IGeoPoint;
   location: IGeoPoint;
   address?: string;
+  locationSuggestion?: IReportLocationSuggestion;
   kelurahanId?: Types.ObjectId;
   gridCellId?: Types.ObjectId;
   clusterId?: Types.ObjectId;
@@ -56,6 +75,15 @@ const ReportSchema = new Schema<IReport>(
     symptoms: { type: [String], required: true, default: [] },
     sickCount: { type: Number, required: true, default: 1, min: 1 },
     age: { type: Number, required: true, default: 0, min: 0, max: 120 },
+    ageGroups: {
+      type: [
+        {
+          type: String,
+          enum: ['balita', 'anak', 'remaja', 'dewasa', 'lansia'],
+        },
+      ],
+      default: [],
+    },
     pollutionType: {
       type: String,
       enum: ['open_burning', 'industrial_smoke', 'vehicle_emission', 'dust', 'odor', 'other'],
@@ -84,6 +112,7 @@ const ReportSchema = new Schema<IReport>(
       required: true,
     },
     address: { type: String, trim: true },
+    locationSuggestion: { type: ReportLocationSuggestionSchema },
     kelurahanId: { type: Schema.Types.ObjectId, ref: 'Kelurahan', index: true },
     gridCellId: { type: Schema.Types.ObjectId, ref: 'GridCell', index: true },
     clusterId: { type: Schema.Types.ObjectId, ref: 'Cluster', index: true },

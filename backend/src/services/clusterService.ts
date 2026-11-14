@@ -37,6 +37,7 @@ import {
 } from '../config/socket.js';
 
 export const CLUSTER_TIME_WINDOW_HOURS = 72;
+export const CLUSTER_CRON_SCHEDULE = '* * * * *';
 export const DBSCAN_MAX_DISTANCE_KM = 0.5;
 export const DBSCAN_MAX_DISTANCE_METERS = DBSCAN_MAX_DISTANCE_KM * 1000;
 export const DBSCAN_MIN_POINTS = 5;
@@ -55,6 +56,7 @@ export interface LeanClusterReportDoc {
   symptoms?: string[];
   sickCount?: number;
   severity?: string;
+  ageGroups?: string[];
   geom?: IGeoPoint;
   location?: IGeoPoint;
   kelurahanId?: Types.ObjectId;
@@ -67,7 +69,11 @@ export interface DbscanReportPointProps {
   category: ClusterCategory;
   sickCount: number;
   symptoms: string[];
+  severity: string;
+  ageGroups: string[];
   kelurahanId?: string;
+  startDate?: string;
+  endDate?: string;
   gridCellId?: string;
   reportedAtMs: number;
   dbscan?: 'edge' | 'core' | 'noise';
@@ -87,6 +93,8 @@ export interface EvaluateClusterRiskInput {
   reportCount: number;
   totalSickCount: number;
   averageAqi: number;
+  hasSevereSymptoms?: boolean;
+  vulnerableGroupDominant?: boolean;
 }
 
 export interface ClusterRiskEvaluationResult {
@@ -121,27 +129,20 @@ export const evaluateClusterRisk = (
   const { category, reportCount, totalSickCount, averageAqi } = input;
   const safeAqi = Number.isFinite(averageAqi) && averageAqi >= 0 ? averageAqi : 50;
 
-  const isPrioritas =
-    reportCount >= 15 ||
-    (reportCount >= 10 && safeAqi > 150) ||
-    (category === 'ispa' && reportCount >= 8 && safeAqi > 200) ||
-    totalSickCount >= 25;
-
-  if (isPrioritas) {
-    return {
-      riskStatus: 'Prioritas',
-      riskColor: 'Merah',
-      colorHex: '#EF4444',
-      riskLevel: 'outbreak',
-    };
-  }
-
   const isSiaga =
-    reportCount >= 8 ||
-    (reportCount >= DBSCAN_MIN_POINTS && safeAqi > 100) ||
-    totalSickCount >= 12;
+    reportCount >= 10 ||
+    (reportCount >= DBSCAN_MIN_POINTS && safeAqi > 100);
 
   if (isSiaga) {
+    if (input.hasSevereSymptoms || input.vulnerableGroupDominant) {
+      return {
+        riskStatus: 'Prioritas',
+        riskColor: 'Merah',
+        colorHex: '#EF4444',
+        riskLevel: 'outbreak',
+      };
+    }
+
     return {
       riskStatus: 'Siaga',
       riskColor: 'Oranye',
@@ -543,7 +544,7 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
       category: { $in: CLUSTER_CATEGORIES },
     })
       .select(
-        '_id category symptoms sickCount severity geom location kelurahanId gridCellId reportedAt'
+        '_id category symptoms sickCount severity ageGroups geom location kelurahanId gridCellId reportedAt'
       )
       .lean()) as unknown as LeanClusterReportDoc[];
 
@@ -610,6 +611,8 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
                 ? doc.sickCount
                 : 1,
             symptoms: Array.isArray(doc.symptoms) ? doc.symptoms : [],
+            severity: String(doc.severity ?? 'sedang').toLowerCase(),
+            ageGroups: Array.isArray(doc.ageGroups) ? doc.ageGroups : [],
             ...(doc.kelurahanId ? { kelurahanId: doc.kelurahanId.toString() } : {}),
             ...(doc.gridCellId ? { gridCellId: doc.gridCellId.toString() } : {}),
             reportedAtMs:
@@ -711,11 +714,26 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
         );
 
         const dominantSymptoms = extractDominantSymptoms(memberFeatures);
+        const vulnerableReportCount = memberFeatures.filter((feature) =>
+          feature.properties.ageGroups.some((group) =>
+            ['balita', 'lansia'].includes(group.toLowerCase())
+          )
+        ).length;
+        const hasSevereSymptoms = memberFeatures.some((feature) => {
+          const props = feature.properties;
+          return (
+            ['berat', 'kritis', 'severe', 'critical'].includes(props.severity) ||
+            props.symptoms.some((symptom) => /sesak|dehidras/i.test(symptom))
+          );
+        });
         const riskEvaluation = evaluateClusterRisk({
           category,
           reportCount,
           totalSickCount,
           averageAqi,
+          hasSevereSymptoms,
+          vulnerableGroupDominant:
+            vulnerableReportCount >= Math.ceil(reportCount / 2),
         });
 
         const deterministicCode = buildDeterministicClusterCode(
@@ -728,7 +746,7 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
             { clusterCode: deterministicCode },
             {
               category,
-              status: { $in: ['active', 'monitoring'] },
+              status: { $in: ['active', 'monitoring', 'verified'] },
               center: {
                 $near: {
                   $geometry: {
@@ -747,9 +765,9 @@ export const detectClusters = async (): Promise<DetectClustersResult> => {
         const firstDetectedAt =
           existingNearbyCluster?.firstDetectedAt ?? new Date(earliestReportMs);
         const nextStatus =
-          existingNearbyCluster?.status === 'monitoring'
-            ? 'monitoring'
-            : 'active';
+          existingNearbyCluster?.status === 'resolved'
+            ? 'active'
+            : existingNearbyCluster?.status ?? 'active';
 
         const upsertedCluster = await Cluster.findOneAndUpdate(
           { clusterCode: targetClusterCode },
@@ -871,6 +889,8 @@ export interface ClusterQueryFilter {
   riskStatus?: string;
   status?: string;
   kelurahanId?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface UpdateClusterStatusInput {
@@ -894,6 +914,7 @@ const VALID_LEGACY_RISK_LEVELS: readonly ClusterLegacyRiskLevel[] = [
 const VALID_CLUSTER_STATUSES: readonly ClusterStatus[] = [
   'active',
   'monitoring',
+  'verified',
   'resolved',
 ] as const;
 
@@ -949,12 +970,12 @@ export const listClusters = async (filter: ClusterQueryFilter = {}) => {
       normalizedStatusCacheToken = rawStatus;
     } else {
       throw new AppError(
-        "Filter status klaster tidak valid. Gunakan 'active', 'monitoring', 'resolved', atau 'all'.",
+        "Filter status klaster tidak valid. Gunakan 'active', 'monitoring', 'verified', 'resolved', atau 'all'.",
         400
       );
     }
   } else {
-    query.status = { $in: ['active', 'monitoring'] };
+    query.status = { $in: ['active', 'monitoring', 'verified'] };
   }
 
   let normalizedKelurahanId: string | undefined;
@@ -967,11 +988,32 @@ export const listClusters = async (filter: ClusterQueryFilter = {}) => {
     normalizedKelurahanId = trimmedKel;
   }
 
+  const dateRange: Record<string, Date> = {};
+  if (filter.startDate) {
+    const startDate = new Date(filter.startDate);
+    if (!Number.isFinite(startDate.getTime())) {
+      throw new AppError('Format parameter startDate tidak valid.', 400);
+    }
+    dateRange.$gte = startDate;
+  }
+  if (filter.endDate) {
+    const endDate = new Date(filter.endDate);
+    if (!Number.isFinite(endDate.getTime())) {
+      throw new AppError('Format parameter endDate tidak valid.', 400);
+    }
+    dateRange.$lte = endDate;
+  }
+  if (Object.keys(dateRange).length > 0) {
+    query.lastUpdatedAt = dateRange;
+  }
+
   const cacheKey = buildFilterCacheKey(CLUSTER_LIST_CACHE_PREFIX, {
     category: category || undefined,
     level: normalizedLevelCacheToken,
     status: normalizedStatusCacheToken,
     kelurahanId: normalizedKelurahanId,
+    startDate: filter.startDate,
+    endDate: filter.endDate,
   });
 
   const cachedClusters = await getCache<unknown[]>(cacheKey);
@@ -1023,6 +1065,58 @@ export const getClusterByIdOrCode = async (idOrCode: string) => {
   ]);
 
   return cluster;
+};
+
+export const getClusterReportTrend = async (idOrCode: string) => {
+  const trimmed = idOrCode.trim();
+  const query = Types.ObjectId.isValid(trimmed)
+    ? { _id: new Types.ObjectId(trimmed) }
+    : { clusterCode: trimmed.toUpperCase() };
+  const cluster = await Cluster.findOne(query).select('_id').lean();
+
+  if (!cluster) {
+    throw new AppError('Data klaster tidak ditemukan.', 404);
+  }
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const startDate = new Date(today);
+  startDate.setUTCDate(startDate.getUTCDate() - 6);
+  const dailyCounts = await Report.aggregate<{ _id: string; count: number }>([
+    {
+      $match: {
+        clusterId: cluster._id,
+        reportedAt: { $gte: startDate },
+        status: { $ne: 'rejected' },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $dateToString: {
+            format: '%Y-%m-%d',
+            date: '$reportedAt',
+            timezone: 'UTC',
+          },
+        },
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+  const countsByDate = new Map(
+    dailyCounts.map((item) => [item._id, item.count])
+  );
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(startDate);
+    date.setUTCDate(startDate.getUTCDate() + index);
+    const dateKey = date.toISOString().slice(0, 10);
+    return {
+      date: dateKey,
+      count: countsByDate.get(dateKey) ?? 0,
+    };
+  });
+
+  return { days, generatedAt: new Date().toISOString() };
 };
 
 export const updateClusterStatus = async (
@@ -1085,8 +1179,10 @@ export const updateClusterStatus = async (
     const mappedReportStatus =
       nextStatus === 'resolved'
         ? 'resolved'
-        : nextStatus === 'monitoring'
-          ? 'in_progress'
+        : nextStatus === 'verified'
+          ? 'verified'
+          : nextStatus === 'monitoring'
+            ? 'in_progress'
           : undefined;
 
     if (mappedReportStatus) {

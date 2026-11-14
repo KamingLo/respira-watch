@@ -8,6 +8,7 @@ import {
   type CreateKelurahanInput,
   type UpdateKelurahanInput,
 } from '../services/kelurahanService.js';
+import { Kelurahan } from '../models/Kelurahan.js';
 import { handleControllerError, sendSuccess } from '../utils/response.js';
 
 export const createKelurahan = async (req: Request, res: Response): Promise<void> => {
@@ -51,6 +52,37 @@ export const listKelurahans = async (req: Request, res: Response): Promise<void>
       error,
       'KelurahanController.listKelurahans',
       'Gagal mengambil daftar kelurahan.'
+    );
+  }
+};
+
+export const listPublicKelurahans = async (
+  _req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const kelurahans = await Kelurahan.find()
+      .select('_id code name kecamatan centroid')
+      .sort({ name: 1 })
+      .lean();
+    sendSuccess(
+      res,
+      kelurahans.map((kelurahan) => ({
+        id: kelurahan._id.toString(),
+        code: kelurahan.code,
+        name: kelurahan.name,
+        kecamatan: kelurahan.kecamatan,
+        centroid: kelurahan.centroid,
+      })),
+      undefined,
+      200
+    );
+  } catch (error) {
+    handleControllerError(
+      res,
+      error,
+      'KelurahanController.listPublicKelurahans',
+      'Gagal mengambil pilihan kelurahan.'
     );
   }
 };

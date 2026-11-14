@@ -3,10 +3,13 @@ import {
   Report,
   type IReport,
   type CitizenReportCategory,
+  type IReportLocationSuggestion,
+  type ReportAgeGroup,
   type ReportSeverity,
   type ReportStatus,
 } from '../models/Report.js';
 import { Kelurahan } from '../models/Kelurahan.js';
+import { Officer } from '../models/Officer.js';
 import type { IGeoPoint } from '../models/GeoJSON.js';
 import { AppError } from '../utils/AppError.js';
 import {
@@ -33,6 +36,13 @@ const VALID_SEVERITIES: ReportSeverity[] = [
   'moderate',
   'severe',
   'critical',
+];
+const VALID_AGE_GROUPS: readonly ReportAgeGroup[] = [
+  'balita',
+  'anak',
+  'remaja',
+  'dewasa',
+  'lansia',
 ];
 
 const VALID_STATUSES: ReportStatus[] = [
@@ -63,6 +73,7 @@ export interface CitizenReportInput {
   jumlah_sakit?: number | string;
   jumlahSakit?: number | string;
   sickCount?: number | string;
+  ageGroups?: string[];
   usia?: number | string;
   age?: number | string;
   tingkat_keparahan?: string;
@@ -79,12 +90,23 @@ export interface CitizenReportInput {
   deskripsi?: string;
   address?: string;
   alamat?: string;
+  locationSuggestion?: unknown;
   kelurahanId?: string;
 }
 
-export interface UpsertCitizenReportResult {
+export interface CreateCitizenReportResult {
   report: IReport;
   isUpdated: boolean;
+}
+
+export interface OfficerReportFilter {
+  status?: string;
+  kelurahanId?: string;
+  unmapped?: string;
+}
+
+export interface UpdateReportStatusInput {
+  status?: string;
 }
 
 export interface PublicMapQueryFilter {
@@ -245,9 +267,53 @@ export const invalidatePublicMapCache = async (): Promise<void> => {
   ]);
 };
 
-export const createOrUpdateCitizenReport = async (
+const normalizeLocationSuggestion = (
+  value: unknown
+): IReportLocationSuggestion | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new AppError('Saran wilayah lokasi tidak valid.', 400);
+  }
+
+  const raw = value as Record<string, unknown>;
+  const readField = (field: string, required = false): string | undefined => {
+    const rawValue = raw[field];
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+      if (required) {
+        throw new AppError('Nama saran wilayah wajib berupa teks.', 400);
+      }
+      return undefined;
+    }
+    if (typeof rawValue !== 'string') {
+      throw new AppError(`Field saran wilayah ${field} harus berupa teks.`, 400);
+    }
+
+    const normalized = rawValue.trim().replace(/\s+/g, ' ');
+    if (!normalized && required) {
+      throw new AppError('Nama saran wilayah tidak boleh kosong.', 400);
+    }
+    if (normalized.length > 120) {
+      throw new AppError(`Field saran wilayah ${field} terlalu panjang.`, 400);
+    }
+    return normalized || undefined;
+  };
+
+  const name = readField('name', true);
+  if (!name) {
+    throw new AppError('Nama saran wilayah tidak boleh kosong.', 400);
+  }
+
+  return {
+    name,
+    ...(readField('kecamatan') ? { kecamatan: readField('kecamatan') } : {}),
+    ...(readField('kota') ? { kota: readField('kota') } : {}),
+    ...(readField('provinsi') ? { provinsi: readField('provinsi') } : {}),
+  };
+};
+
+export const createCitizenReport = async (
   input: CitizenReportInput
-): Promise<UpsertCitizenReportResult> => {
+): Promise<CreateCitizenReportResult> => {
 
   const rawCategory = (input.kategori ?? input.category ?? '').toString().trim().toLowerCase();
   if (!VALID_CITIZEN_CATEGORIES.includes(rawCategory as CitizenReportCategory)) {
@@ -282,10 +348,10 @@ export const createOrUpdateCitizenReport = async (
     rawSickCount === null ||
     rawSickCount === '' ||
     !Number.isInteger(sickCount) ||
-    sickCount < 1
+    sickCount !== 1
   ) {
     throw new AppError(
-      'Jumlah sakit (jumlah_sakit / sickCount) wajib berupa bilangan bulat minimal 1.',
+      'Setiap laporan hanya boleh mencatat satu individu. Kirim laporan terpisah untuk individu lain.',
       400
     );
   }
@@ -302,6 +368,26 @@ export const createOrUpdateCitizenReport = async (
   ) {
     throw new AppError(
       'Usia penderita (usia / age) wajib berupa bilangan bulat yang valid (0 - 120).',
+      400
+    );
+  }
+
+  const ageGroups = Array.isArray(input.ageGroups)
+    ? [...new Set(input.ageGroups.map((group) => String(group).trim().toLowerCase()))]
+    : [];
+  if (
+    ageGroups.some(
+      (group) => !VALID_AGE_GROUPS.includes(group as ReportAgeGroup)
+    )
+  ) {
+    throw new AppError(
+      `Kelompok usia tidak valid. Pilihan yang tersedia: ${VALID_AGE_GROUPS.join(', ')}.`,
+      400
+    );
+  }
+  if (ageGroups.length !== 1) {
+    throw new AppError(
+      'Setiap laporan hanya boleh mencatat satu individu dan satu kelompok usia.',
       400
     );
   }
@@ -334,6 +420,7 @@ export const createOrUpdateCitizenReport = async (
   const deviceHash = rawDeviceHash.toLowerCase();
 
   const validatedGeom = validateReportGeom(input.geom ?? input.location);
+  const locationSuggestion = normalizeLocationSuggestion(input.locationSuggestion);
 
   let resolvedKelurahanId: Types.ObjectId | undefined;
   if (input.kelurahanId) {
@@ -372,54 +459,26 @@ export const createOrUpdateCitizenReport = async (
   const address = (input.address ?? input.alamat)?.toString().trim();
   const reporterContact = input.reporterContact?.toString().trim();
 
-  const existingReport = await Report.findOne({ deviceHash }).sort({ updatedAt: -1 });
-
-  let savedReport: IReport;
-  let isUpdated = false;
-
-  if (existingReport) {
-    existingReport.reporterName = reporterName;
-    if (reporterContact !== undefined) {
-      existingReport.reporterContact = reporterContact;
-    }
-    existingReport.category = category;
-    existingReport.symptoms = symptoms;
-    existingReport.sickCount = sickCount;
-    existingReport.age = age;
-    existingReport.severity = severity;
-    existingReport.description = description;
-    existingReport.geom = validatedGeom;
-    existingReport.location = validatedGeom;
-    if (address !== undefined) {
-      existingReport.address = address;
-    }
-    if (resolvedKelurahanId) {
-      existingReport.kelurahanId = resolvedKelurahanId;
-    }
-    existingReport.reportedAt = new Date();
-
-    savedReport = await existingReport.save();
-    isUpdated = true;
-  } else {
-    savedReport = await Report.create({
-      reporterName,
-      ...(reporterContact ? { reporterContact } : {}),
-      category,
-      symptoms,
-      sickCount,
-      age,
-      severity,
-      deviceHash,
-      description,
-      geom: validatedGeom,
-      location: validatedGeom,
-      ...(address ? { address } : {}),
-      ...(resolvedKelurahanId ? { kelurahanId: resolvedKelurahanId } : {}),
-      status: 'pending',
-      reportedAt: new Date(),
-    });
-    isUpdated = false;
-  }
+  const savedReport = await Report.create({
+    reporterName,
+    ...(reporterContact ? { reporterContact } : {}),
+    category,
+    symptoms,
+    sickCount,
+    age,
+    ageGroups: ageGroups as ReportAgeGroup[],
+    severity,
+    deviceHash,
+    description,
+    geom: validatedGeom,
+    location: validatedGeom,
+    ...(address ? { address } : {}),
+    ...(locationSuggestion ? { locationSuggestion } : {}),
+    ...(resolvedKelurahanId ? { kelurahanId: resolvedKelurahanId } : {}),
+    status: 'pending',
+    reportedAt: new Date(),
+  });
+  const isUpdated = false;
 
   await invalidatePublicMapCache();
 
@@ -433,6 +492,7 @@ export const createOrUpdateCitizenReport = async (
       symptoms: savedReport.symptoms,
       sickCount: savedReport.sickCount,
       age: savedReport.age,
+      ageGroups: savedReport.ageGroups,
       severity: savedReport.severity,
       status: savedReport.status,
       geom: savedReport.geom,
@@ -452,6 +512,125 @@ export const createOrUpdateCitizenReport = async (
     report: savedReport,
     isUpdated,
   };
+};
+
+export const listOfficerReports = async (
+  officerId: string,
+  filter: OfficerReportFilter = {}
+) => {
+  if (!Types.ObjectId.isValid(officerId)) {
+    throw new AppError('Identitas petugas tidak valid.', 401);
+  }
+
+  const officer = await Officer.findById(officerId)
+    .select('role assignedKelurahan')
+    .lean();
+  if (!officer) {
+    throw new AppError('Data petugas tidak ditemukan.', 404);
+  }
+
+  const unmappedFilter = String(filter.unmapped ?? '').trim().toLowerCase();
+  if (unmappedFilter && !['true', 'false'].includes(unmappedFilter)) {
+    throw new AppError('Filter unmapped harus bernilai true atau false.', 400);
+  }
+  if (unmappedFilter === 'true' && officer.role !== 'admin') {
+    throw new AppError(
+      'Hanya admin yang dapat meninjau laporan tanpa kelurahan.',
+      403
+    );
+  }
+  if (unmappedFilter === 'true' && filter.kelurahanId) {
+    throw new AppError(
+      'Filter unmapped tidak dapat digabung dengan kelurahanId.',
+      400
+    );
+  }
+
+  const query: Record<string, unknown> = {};
+  if (unmappedFilter === 'true') {
+    query.kelurahanId = null;
+  } else if (officer.role !== 'admin') {
+    if (!officer.assignedKelurahan) {
+      return [];
+    }
+    query.kelurahanId = officer.assignedKelurahan;
+  } else if (filter.kelurahanId) {
+    if (!Types.ObjectId.isValid(filter.kelurahanId)) {
+      throw new AppError('Format parameter kelurahanId tidak valid.', 400);
+    }
+    query.kelurahanId = new Types.ObjectId(filter.kelurahanId);
+  }
+
+  if (filter.status) {
+    if (!VALID_STATUSES.includes(filter.status as ReportStatus)) {
+      throw new AppError(
+        `Filter status laporan tidak valid. Pilihan: ${VALID_STATUSES.join(', ')}.`,
+        400
+      );
+    }
+    query.status = filter.status;
+  } else {
+    query.status = { $ne: 'rejected' };
+  }
+
+  return Report.find(query)
+    .populate('kelurahanId', 'code name kecamatan')
+    .sort({ reportedAt: -1 })
+    .limit(200)
+    .lean();
+};
+
+export const updateOfficerReportStatus = async (
+  reportId: string,
+  statusInput: UpdateReportStatusInput,
+  officerId: string
+) => {
+  if (!Types.ObjectId.isValid(reportId) || !Types.ObjectId.isValid(officerId)) {
+    throw new AppError('ID laporan atau petugas tidak valid.', 400);
+  }
+
+  const status = String(statusInput.status ?? '').trim().toLowerCase();
+  if (!VALID_STATUSES.includes(status as ReportStatus)) {
+    throw new AppError(
+      `Status laporan tidak valid. Pilihan: ${VALID_STATUSES.join(', ')}.`,
+      400
+    );
+  }
+
+  const officer = await Officer.findById(officerId)
+    .select('role assignedKelurahan')
+    .lean();
+  if (!officer) {
+    throw new AppError('Data petugas tidak ditemukan.', 404);
+  }
+
+  const reportQuery: Record<string, unknown> = {
+    _id: new Types.ObjectId(reportId),
+  };
+  if (officer.role !== 'admin') {
+    if (!officer.assignedKelurahan) {
+      throw new AppError('Petugas belum memiliki wilayah tugas.', 403);
+    }
+    reportQuery.kelurahanId = officer.assignedKelurahan;
+  }
+
+  const report = await Report.findOne(reportQuery);
+  if (!report) {
+    throw new AppError('Laporan tidak ditemukan di wilayah tugas petugas.', 404);
+  }
+
+  report.status = status as ReportStatus;
+  if (status === 'verified') {
+    report.verifiedBy = new Types.ObjectId(officerId);
+    report.verifiedAt = new Date();
+  } else {
+    report.verifiedBy = undefined;
+    report.verifiedAt = undefined;
+  }
+
+  const savedReport = await report.save();
+  await invalidatePublicMapCache();
+  return savedReport;
 };
 
 export const getPublicMapData = async (
@@ -594,7 +773,7 @@ export const getPublicMapData = async (
     const sickCount = typeof doc.sickCount === 'number' && doc.sickCount > 0 ? doc.sickCount : 1;
     const age = typeof doc.age === 'number' ? doc.age : 0;
     const severity = (doc.severity ?? 'sedang') as ReportSeverity;
-    const category = String(doc.category ?? 'ispa');
+    const category = String(doc.category ?? 'ispa').trim().toLowerCase();
     const status = (doc.status ?? 'pending') as ReportStatus;
 
     totalSickCount += sickCount;

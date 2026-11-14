@@ -1,7 +1,9 @@
 import cron, { type ScheduledTask } from 'node-cron';
-import { detectClusters, type DetectClustersResult } from '../services/clusterService.js';
-
-export const CLUSTER_CRON_SCHEDULE = '*/10 * * * *';
+import {
+  CLUSTER_CRON_SCHEDULE,
+  detectClusters,
+  type DetectClustersResult,
+} from '../services/clusterService.js';
 
 let isClusterCronRunning = false;
 let clusterScheduledTaskInstance: ScheduledTask | null = null;
@@ -71,7 +73,7 @@ export const startClusterCronJob = (runImmediatelyOnBoot = true): ScheduledTask 
   );
 
   console.log(
-    `[ClusterCron] Terjadwal aktif menggunakan node-cron pada ekspresi "${CLUSTER_CRON_SCHEDULE}" (setiap 10 menit, WIB).`
+    `[ClusterCron] Terjadwal aktif menggunakan node-cron pada ekspresi "${CLUSTER_CRON_SCHEDULE}" (setiap menit, WIB).`
   );
 
   if (runImmediatelyOnBoot) {

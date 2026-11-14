@@ -3,6 +3,7 @@ import {
   detectClusters,
   listClusters,
   getClusterByIdOrCode,
+  getClusterReportTrend,
   updateClusterStatus as updateClusterStatusService,
   type ClusterQueryFilter,
   type UpdateClusterStatusInput,
@@ -20,6 +21,8 @@ export const getClusters = async (req: Request, res: Response): Promise<void> =>
       riskStatus,
       status,
       kelurahanId,
+      startDate,
+      endDate,
     } = req.query as ClusterQueryFilter;
 
     const clusters = await listClusters({
@@ -30,6 +33,8 @@ export const getClusters = async (req: Request, res: Response): Promise<void> =>
       riskStatus,
       status,
       kelurahanId,
+      startDate,
+      endDate,
     });
 
     sendSuccess(
@@ -70,6 +75,28 @@ export const getClusterDetail = async (
       error,
       'ClusterController.getClusterDetail',
       'Gagal memuat detail klaster penyakit.'
+    );
+  }
+};
+
+export const getClusterTrend = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const idOrCode = String(req.params.id ?? '').trim();
+    if (!idOrCode) {
+      throw new AppError('Parameter ID atau kode klaster wajib disertakan.', 400);
+    }
+
+    const trend = await getClusterReportTrend(idOrCode);
+    sendSuccess(res, trend, 'Tren laporan klaster berhasil dimuat.', 200);
+  } catch (error) {
+    handleControllerError(
+      res,
+      error,
+      'ClusterController.getClusterTrend',
+      'Gagal memuat tren laporan klaster.'
     );
   }
 };

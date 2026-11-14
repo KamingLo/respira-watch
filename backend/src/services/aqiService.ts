@@ -133,6 +133,34 @@ export interface AqiResultCardResponse {
   };
 }
 
+export interface AqiGridMapItem {
+  gridId: string;
+  cellCode: string;
+  geometry: IGeoPolygon;
+  aqi: number;
+  pm25: number;
+  pm10: number;
+  category: AqiCategory;
+  statusLabel: string;
+  colorHex: string;
+  recordedAt: string;
+  source: string;
+}
+
+export interface AqiTrendDay {
+  date: string;
+  averageAqi: number | null;
+  averagePm25: number | null;
+  averagePm10: number | null;
+  readingCount: number;
+}
+
+export interface AqiTrendResponse {
+  days: number;
+  items: AqiTrendDay[];
+  generatedAt: string;
+}
+
 export const buildGridAqiCacheKey = (gridId: string): string =>
   `${AQI_GRID_CACHE_PREFIX}:${gridId.trim()}`;
 
@@ -736,5 +764,158 @@ export const getNearestGridAqiByCoords = async (
       source: cacheSource,
       ttlSeconds: AQI_GRID_CACHE_TTL_SECONDS,
     },
+  };
+};
+
+export const getAqiGridMap = async (): Promise<{
+  items: AqiGridMapItem[];
+  generatedAt: string;
+}> => {
+  const cells = await ensureDefaultGridCells();
+  const items = await Promise.all(
+    cells.map(async (cell): Promise<AqiGridMapItem | null> => {
+      const cached = await readGridAqiFromRedis(cell._id.toString());
+      let aqi = cached?.aqi;
+      let pm25 = cached?.pm25;
+      let pm10 = cached?.pm10;
+      let category = cached?.category;
+      let recordedAt = cached?.recordedAt;
+      let source = cached?.source;
+
+      if (aqi === undefined) {
+        const latest = await AqiReading.findOne({ gridCellId: cell._id })
+          .sort({ recordedAt: -1 })
+          .lean();
+        if (!latest) return null;
+
+        aqi = latest.aqi;
+        pm25 = Number(latest.pollutants?.pm25 ?? 0);
+        pm10 = Number(latest.pollutants?.pm10 ?? 0);
+        category = latest.category;
+        recordedAt = latest.recordedAt.toISOString();
+        source = latest.source;
+      }
+
+      if (
+        aqi === undefined ||
+        pm25 === undefined ||
+        pm10 === undefined ||
+        category === undefined ||
+        recordedAt === undefined
+      ) {
+        return null;
+      }
+
+      const status = resolveAreaStatusFromAqi(aqi);
+      return {
+        gridId: cell._id.toString(),
+        cellCode: cell.cellCode,
+        geometry: cell.geometry,
+        aqi,
+        pm25,
+        pm10,
+        category,
+        statusLabel: status.statusLabel,
+        colorHex: status.colorHex,
+        recordedAt,
+        source: source ?? 'mongodb_fallback',
+      };
+    })
+  );
+
+  return {
+    items: items.filter((item): item is AqiGridMapItem => item !== null),
+    generatedAt: new Date().toISOString(),
+  };
+};
+
+const getJakartaDateKey = (date: Date): string => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const part = (type: 'year' | 'month' | 'day') =>
+    parts.find((item) => item.type === type)?.value ?? '';
+
+  return `${part('year')}-${part('month')}-${part('day')}`;
+};
+
+const roundMetric = (value: number | null | undefined): number | null =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? Number(value.toFixed(1))
+    : null;
+
+export const getAqiHistory = async (
+  rawDays: unknown,
+  rawKelurahanId: unknown
+): Promise<AqiTrendResponse> => {
+  const days = rawDays === undefined ? 7 : Number(rawDays);
+  if (!Number.isInteger(days) || ![7, 14, 30].includes(days)) {
+    throw new AppError('Rentang tren AQI harus 7, 14, atau 30 hari.', 400);
+  }
+
+  const kelurahanId =
+    typeof rawKelurahanId === 'string' ? rawKelurahanId.trim() : '';
+  if (kelurahanId && !Types.ObjectId.isValid(kelurahanId)) {
+    throw new AppError('Format parameter kelurahanId tidak valid.', 400);
+  }
+
+  const todayKey = getJakartaDateKey(new Date());
+  const todayMidnight = new Date(`${todayKey}T00:00:00+07:00`);
+  const startDate = new Date(
+    todayMidnight.getTime() - (days - 1) * 24 * 60 * 60 * 1000
+  );
+  const match: Record<string, unknown> = {
+    recordedAt: { $gte: startDate },
+  };
+  if (kelurahanId) {
+    match.kelurahanId = new Types.ObjectId(kelurahanId);
+  }
+
+  const dailyReadings = await AqiReading.aggregate<{
+    _id: string;
+    averageAqi: number | null;
+    averagePm25: number | null;
+    averagePm10: number | null;
+    readingCount: number;
+  }>([
+    { $match: match },
+    {
+      $group: {
+        _id: {
+          $dateToString: {
+            format: '%Y-%m-%d',
+            date: '$recordedAt',
+            timezone: 'Asia/Jakarta',
+          },
+        },
+        averageAqi: { $avg: '$aqi' },
+        averagePm25: { $avg: '$pollutants.pm25' },
+        averagePm10: { $avg: '$pollutants.pm10' },
+        readingCount: { $sum: 1 },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+  const byDate = new Map(dailyReadings.map((item) => [item._id, item]));
+  const items = Array.from({ length: days }, (_, index): AqiTrendDay => {
+    const date = new Date(startDate.getTime() + index * 24 * 60 * 60 * 1000);
+    const dateKey = getJakartaDateKey(date);
+    const reading = byDate.get(dateKey);
+    return {
+      date: dateKey,
+      averageAqi: roundMetric(reading?.averageAqi),
+      averagePm25: roundMetric(reading?.averagePm25),
+      averagePm10: roundMetric(reading?.averagePm10),
+      readingCount: reading?.readingCount ?? 0,
+    };
+  });
+
+  return {
+    days,
+    items,
+    generatedAt: new Date().toISOString(),
   };
 };
