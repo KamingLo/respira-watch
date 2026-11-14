@@ -3,9 +3,7 @@
 import { useRouter } from "next/navigation";
 import {
   Bell,
-  MapPin,
   FileText,
-  Activity,
   RefreshCw,
 } from "lucide-react";
 
@@ -47,39 +45,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-[#EDF2EE] p-4 pb-28 md:p-6">
-      <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-5 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
-
-        {/* DESKTOP CITIZEN SIDEBAR */}
-        <aside className="hidden lg:block">
-          <Card className="sticky top-6 min-h-[calc(100vh-3rem)]">
-            <div className="flex items-center gap-2">
-              <Activity className="text-green-700" size={26} />
-
-              <h2 className="text-xl font-bold text-green-800">
-                RespiraWatch
-              </h2>
-            </div>
-
-            <p className="mt-3 text-sm leading-relaxed text-gray-500">
-              Pantau kesehatan lingkunganmu.
-            </p>
-
-            <div className="mt-8 space-y-3">
-              <div className="flex items-center gap-3 rounded-xl bg-green-50 p-3 font-semibold text-green-800">
-                <MapPin size={19} />
-                Peta Publik
-              </div>
-
-              <button
-                onClick={handleReport}
-                className="flex w-full items-center gap-3 rounded-xl p-3 text-left text-gray-600 transition hover:bg-green-50 hover:text-green-800"
-              >
-                <FileText size={19} />
-                Lapor Gejala
-              </button>
-            </div>
-          </Card>
-        </aside>
+      <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
 
         {/* MAIN CONTENT */}
         <section className="min-w-0 space-y-5">
@@ -108,7 +74,6 @@ export default function HomePage() {
             </button>
           </header>
 
-          {/* AQI - MOBILE ONLY */}
           <div className="lg:hidden">
             <AqiCard
               value={118}
@@ -137,7 +102,7 @@ export default function HomePage() {
             </div>
 
             {/* MAP CONTENT */}
-            <div className="relative h-[350px] overflow-hidden rounded-xl md:h-[450px] lg:h-[calc(100vh-310px)] lg:min-h-[450px]">
+            <div className="relative h-[350px] overflow-hidden rounded-xl md:h-[500px] lg:h-[calc(100vh-280px)] lg:min-h-[520px]">
 
               {loading ? (
                 <div className="flex h-full items-center justify-center bg-green-50">
@@ -217,50 +182,13 @@ export default function HomePage() {
         </section>
 
         {/* DESKTOP INFORMATION PANEL */}
-        <aside className="hidden space-y-5 lg:block">
+        <aside className="hidden min-w-0 space-y-5 lg:sticky lg:top-20 lg:block lg:self-start">
 
           <AqiCard
             value={118}
             location="Kel. Kelayan Selatan"
             subLocation="RW 04 · Banjarmasin Selatan"
           />
-
-          <Card title="Informasi Wilayah">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">
-                Status wilayah
-              </span>
-
-              <Badge variant="warning">
-                Waspada
-              </Badge>
-            </div>
-
-            <div className="mt-4 rounded-xl bg-green-50 p-4">
-              <p className="text-2xl font-bold text-green-800">
-                {points.length}
-              </p>
-
-              <p className="mt-1 text-sm text-gray-600">
-                Laporan sesuai filter kategori.
-              </p>
-            </div>
-
-            <p className="mt-4 text-xs leading-relaxed text-gray-500">
-              Tetap pantau kondisi lingkungan dan jaga kesehatan.
-            </p>
-          </Card>
-
-          <Card>
-            <h3 className="font-bold text-gray-800">
-              Tips Kesehatan
-            </h3>
-
-            <p className="mt-2 text-sm leading-relaxed text-gray-600">
-              Gunakan masker ketika kualitas udara kurang baik
-              dan kurangi aktivitas berat di luar ruangan.
-            </p>
-          </Card>
         </aside>
       </div>
     </main>

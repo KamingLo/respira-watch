@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 
 import type { MapPoint } from "@/types/map.types";
+import type { ClusterRecord } from "@/types/cluster.types";
 
 const MapCanvas = dynamic(
   () => import("./MapCanvas"),
@@ -20,10 +21,12 @@ const MapCanvas = dynamic(
 
 interface MapViewProps {
   points: MapPoint[];
+  clusters?: ClusterRecord[];
 }
 
 export default function MapView({
   points,
+  clusters = [],
 }: MapViewProps) {
-  return <MapCanvas points={points} />;
+  return <MapCanvas points={points} clusters={clusters} />;
 }

@@ -156,7 +156,7 @@ export default function ConfirmReportPage() {
         <section>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-[#123D2B]">
-              Gejala terdeteksi
+              Gejala laporan
             </h2>
 
             <span className="text-xs font-semibold text-[#315344]">
@@ -197,7 +197,7 @@ export default function ConfirmReportPage() {
                   {selected ? (
                     <span className="flex items-center gap-1 text-[10px] font-semibold text-green-800">
                       <Check size={12} />
-                      Terdeteksi AI
+                      Dipilih
                     </span>
                   ) : (
                     <span className="text-[10px] font-semibold text-gray-500">
@@ -218,9 +218,8 @@ export default function ConfirmReportPage() {
           />
 
           <p className="text-xs leading-relaxed text-[#315344]">
-            Periksa kembali gejala yang terdeteksi. Kamu dapat
-            menambahkan atau menghapus gejala sesuai kondisi
-            yang dialami.
+            Saran AI bukan diagnosis medis. Periksa kembali dan
+            sesuaikan gejala dengan kondisi yang dialami.
           </p>
         </div>
 

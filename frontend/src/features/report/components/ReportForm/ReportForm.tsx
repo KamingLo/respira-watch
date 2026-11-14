@@ -12,9 +12,10 @@ import {
   Users,
   Check,
   ChevronDown,
+  RefreshCw,
+  Sparkles,
 } from "lucide-react";
 
-import Button from "@/components/ui/Button/Button";
 import Card from "@/components/ui/Card/Card";
 import ReportLocationPicker from "@/features/report/components/ReportLocationPicker/ReportLocationPicker";
 import {
@@ -22,12 +23,13 @@ import {
   symptomCategoryIcons,
   type SymptomCategory,
 } from "@/features/report/symptoms";
+import { classifyComplaint } from "@/services/ai.service";
 
 import type {
-  ReportCategory,
   ReportSeverity,
   ReportLocation,
 } from "@/types/report.types";
+import type { ComplaintClassification } from "@/types/ai.types";
 
 interface SpeechRecognitionResultEvent extends Event {
   resultIndex: number;
@@ -46,6 +48,48 @@ interface SpeechRecognitionInstance {
 }
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+interface AiSuggestion {
+  result: ComplaintClassification;
+  category: SymptomCategory;
+  matchedSymptoms: string[];
+}
+
+const symptomAliases: Record<string, string[]> = {
+  batuk: ["batuk", "batuk berdahak", "batuk kering"],
+  demam: ["demam", "panas"],
+  sesak: [
+    "sesak",
+    "sesak napas",
+    "sesak nafas",
+    "sulit bernapas",
+    "sulit bernafas",
+  ],
+  pilek: ["pilek", "flu", "hidung tersumbat", "meler"],
+  "bab cair": ["bab cair", "diare", "buang air besar cair"],
+  muntah: ["muntah", "mual"],
+};
+
+const matchSuggestedSymptoms = (
+  category: SymptomCategory,
+  suggestedSymptoms: string[]
+): string[] => {
+  const normalizedSuggestions = suggestedSymptoms.map((symptom) =>
+    symptom.trim().toLocaleLowerCase("id-ID")
+  );
+
+  return symptoms[category]
+    .filter((symptom) => {
+      const aliases = symptomAliases[symptom.label.toLocaleLowerCase("id-ID")] ?? [
+        symptom.label.toLocaleLowerCase("id-ID"),
+      ];
+
+      return aliases.some((alias) =>
+        normalizedSuggestions.includes(alias)
+      );
+    })
+    .map((symptom) => symptom.label);
+};
 
 export default function ReportForm() {
   const router = useRouter();
@@ -69,8 +113,12 @@ export default function ReportForm() {
   const [isRecording, setIsRecording] = useState(false);
   const [voiceError, setVoiceError] = useState("");
   const [formError, setFormError] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiSuggestion, setAiSuggestion] = useState<AiSuggestion | null>(null);
 
   const toggleSymptom = (symptom: string) => {
+    setAiSuggestion(null);
     setSelectedSymptoms((previous) =>
       previous.includes(symptom)
         ? previous.filter((item) => item !== symptom)
@@ -79,8 +127,63 @@ export default function ReportForm() {
   };
 
   const handleCategoryChange = (value: SymptomCategory) => {
+    setAiSuggestion(null);
     setCategory(value);
     setSelectedSymptoms([]);
+  };
+
+  const handleAiAssist = async () => {
+    const complaint = description.trim();
+    if (!complaint) return;
+
+    const parsedAge = Number(age);
+    const validAge =
+      age.trim() !== "" &&
+      Number.isInteger(parsedAge) &&
+      parsedAge >= 0 &&
+      parsedAge <= 120;
+
+    setAiError("");
+    setAiSuggestion(null);
+    setAiLoading(true);
+
+    try {
+      const result = await classifyComplaint(
+        complaint,
+        validAge ? parsedAge : undefined
+      );
+      const suggestedCategory: SymptomCategory =
+        result.category === "ispa" ? "ISPA" : "Diare";
+
+      setAiSuggestion({
+        result,
+        category: suggestedCategory,
+        matchedSymptoms: matchSuggestedSymptoms(
+          suggestedCategory,
+          result.symptoms
+        ),
+      });
+    } catch (error: unknown) {
+      setAiError(
+        error instanceof Error
+          ? error.message
+          : "Saran AI belum bisa dimuat. Silakan coba lagi."
+      );
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const applyAiSuggestion = () => {
+    if (!aiSuggestion) return;
+
+    setCategory(aiSuggestion.category);
+    setSelectedSymptoms(aiSuggestion.matchedSymptoms);
+    setSeverity(aiSuggestion.result.severity);
+    if (!age.trim() && aiSuggestion.result.age !== undefined) {
+      setAge(String(aiSuggestion.result.age));
+    }
+    setAiSuggestion(null);
   };
 
   const handleVoiceInput = () => {
@@ -132,6 +235,7 @@ export default function ReportForm() {
             ? `${previous.trim()} ${transcript.trim()}`
             : transcript.trim()
         );
+        setAiSuggestion(null);
       }
     };
 
@@ -298,7 +402,10 @@ export default function ReportForm() {
                       min="0"
                       max="120"
                       value={age}
-                      onChange={(event) => setAge(event.target.value)}
+                      onChange={(event) => {
+                        setAge(event.target.value);
+                        setAiSuggestion(null);
+                      }}
                       placeholder="Usia"
                       className="w-full min-w-0 bg-transparent text-xs font-bold text-[#123D2B] outline-none placeholder:text-gray-400"
                     />
@@ -434,7 +541,10 @@ export default function ReportForm() {
                 <button
                   key={item}
                   type="button"
-                  onClick={() => setSeverity(item)}
+                  onClick={() => {
+                    setSeverity(item);
+                    setAiSuggestion(null);
+                  }}
                   className={`rounded-xl border px-3 py-2.5 text-sm font-semibold capitalize transition ${
                     severity === item
                       ? "border-green-700 bg-green-100 text-green-900"
@@ -453,7 +563,11 @@ export default function ReportForm() {
               <textarea
                 id="description"
                 value={description}
-                onChange={(event) => setDescription(event.target.value)}
+                onChange={(event) => {
+                  setDescription(event.target.value);
+                  setAiSuggestion(null);
+                  setAiError("");
+                }}
                 placeholder="Ceritakan keluhan yang dialami..."
                 rows={4}
                 className="min-h-[100px] w-full resize-none bg-transparent text-sm font-medium leading-relaxed text-[#123D2B] outline-none placeholder:text-gray-500"
@@ -481,6 +595,64 @@ export default function ReportForm() {
 
             {voiceError && (
               <p className="text-xs text-red-600">{voiceError}</p>
+            )}
+
+            <button
+              type="button"
+              onClick={handleAiAssist}
+              disabled={aiLoading || !description.trim()}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-green-800 bg-white px-4 py-2 text-sm font-semibold text-green-900 transition hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {aiLoading ? (
+                <RefreshCw size={16} className="animate-spin" />
+              ) : (
+                <Sparkles size={16} />
+              )}
+              {aiLoading ? "Menganalisis keluhan..." : "Bantu isi dengan AI"}
+            </button>
+
+            {aiError && (
+              <p role="alert" className="text-sm text-red-700">
+                {aiError}
+              </p>
+            )}
+
+            {aiSuggestion && (
+              <section
+                aria-live="polite"
+                className="mt-3 rounded-xl border border-green-200 bg-white p-3"
+              >
+                <h3 className="text-sm font-bold text-green-900">
+                  Saran AI (bukan diagnosis)
+                </h3>
+                <p className="mt-2 text-xs text-gray-700">
+                  Kategori: <strong>{aiSuggestion.category}</strong>
+                  {" · "}
+                  Keparahan:{" "}
+                  <strong className="capitalize">
+                    {aiSuggestion.result.severity}
+                  </strong>
+                </p>
+                <p className="mt-1 text-xs text-gray-700">
+                  Gejala:{" "}
+                  {aiSuggestion.result.symptoms.length > 0
+                    ? aiSuggestion.result.symptoms.join(", ")
+                    : "Tidak ada gejala yang dikenali"}
+                </p>
+                {aiSuggestion.result.meta.usedFallback && (
+                  <p className="mt-2 text-xs text-amber-700">
+                    Analisis menggunakan saran dasar karena layanan AI utama
+                    sedang tidak tersedia.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={applyAiSuggestion}
+                  className="mt-3 rounded-full bg-green-800 px-4 py-2 text-xs font-bold text-white transition hover:bg-green-900"
+                >
+                  Gunakan saran
+                </button>
+              </section>
             )}
           </Card>
 

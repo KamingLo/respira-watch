@@ -6,15 +6,19 @@ import {
 } from "react-leaflet";
 
 import type { MapPoint } from "@/types/map.types";
+import type { ClusterRecord } from "@/types/cluster.types";
 
 import ClusterMarker from "../ClusterMarker/ClusterMarker";
+import ClusterAreaMarkers from "../ClusterMarker/ClusterAreaMarkers";
 
 interface MapCanvasProps {
   points: MapPoint[];
+  clusters?: ClusterRecord[];
 }
 
 export default function MapCanvas({
   points,
+  clusters = [],
 }: MapCanvasProps) {
   return (
     <MapContainer
@@ -29,6 +33,7 @@ export default function MapCanvas({
       />
 
       <ClusterMarker points={points} />
+      <ClusterAreaMarkers clusters={clusters} />
     </MapContainer>
   );
 }

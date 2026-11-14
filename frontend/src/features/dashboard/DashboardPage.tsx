@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Activity,
   Bell,
+  ChevronRight,
   ClipboardList,
   Download,
   MapPin,
@@ -17,18 +18,10 @@ import MapFilter from "@/features/map/components/MapFilter/MapFilter";
 import MapView from "@/features/map/components/MapView/MapView";
 import useMap from "@/features/map/hooks/useMap";
 import Sidebar from "@/components/layout/Sidebar/Sidebar";
+import { getClusters } from "@/services/cluster.service";
 
 import type { MapPoint } from "@/types/map.types";
-
-interface ClusterSummary {
-  name: string;
-  reports: number;
-  ispa: number;
-  diare: number;
-  status: string;
-  priority: boolean;
-  lastReportedAt: number;
-}
+import type { ClusterRecord } from "@/types/cluster.types";
 
 const reportStatuses = [
   { label: "Baru", key: "baru" },
@@ -46,44 +39,16 @@ const getRecentPoints = (points: MapPoint[]) => {
   });
 };
 
-const groupPointsByArea = (points: MapPoint[]): ClusterSummary[] => {
-  const clusters = new Map<string, ClusterSummary>();
+const getClusterLocation = (cluster: ClusterRecord): string => {
+  if (
+    cluster.kelurahanId &&
+    typeof cluster.kelurahanId === "object" &&
+    cluster.kelurahanId.name
+  ) {
+    return cluster.kelurahanId.name;
+  }
 
-  points.forEach((point) => {
-    const name = point.kelurahan?.name || "Wilayah belum diketahui";
-    const timestamp = Date.parse(point.reportedAt);
-    const cluster = clusters.get(name) ?? {
-      name,
-      reports: 0,
-      ispa: 0,
-      diare: 0,
-      status: point.status,
-      priority: false,
-      lastReportedAt: 0,
-    };
-
-    cluster.reports += 1;
-    if (point.category.toLowerCase() === "ispa") {
-      cluster.ispa += 1;
-    } else if (point.category.toLowerCase() === "diare") {
-      cluster.diare += 1;
-    }
-
-    cluster.priority ||= ["berat", "kritis", "tinggi"].includes(
-      point.severity.toLowerCase()
-    );
-
-    if (Number.isFinite(timestamp) && timestamp >= cluster.lastReportedAt) {
-      cluster.lastReportedAt = timestamp;
-      cluster.status = point.status;
-    }
-
-    clusters.set(name, cluster);
-  });
-
-  return [...clusters.values()].sort(
-    (first, second) => second.reports - first.reports
-  );
+  return cluster.clusterCode;
 };
 
 const getWeeklyTrend = (points: MapPoint[]) => {
@@ -129,11 +94,45 @@ export default function DashboardPage() {
     refetch,
   } = useMap();
 
+  const [clusters, setClusters] = useState<ClusterRecord[]>([]);
+  const [clustersLoading, setClustersLoading] = useState(true);
+  const [clustersError, setClustersError] = useState<string | null>(null);
+  const [clusterRequestId, setClusterRequestId] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+
+    getClusters()
+      .then((data) => {
+        if (active) setClusters(data);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setClustersError(
+            error instanceof Error
+              ? error.message
+              : "Gagal memuat data klaster."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setClustersLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [clusterRequestId]);
+
   const recentPoints = useMemo(() => getRecentPoints(points), [points]);
-  const clusters = useMemo(
-    () => groupPointsByArea(recentPoints),
-    [recentPoints]
+  const visibleClusters = useMemo(
+    () =>
+      clusters.filter((cluster) =>
+        selectedCategories.includes(cluster.category.toUpperCase())
+      ),
+    [clusters, selectedCategories]
   );
+  const featuredCluster = visibleClusters[0] ?? null;
   const weeklyTrend = useMemo(() => getWeeklyTrend(points), [points]);
 
   const weeklyMaximum = Math.max(
@@ -142,11 +141,25 @@ export default function DashboardPage() {
   );
   const weeklyTotal = weeklyTrend.reduce((total, day) => total + day.count, 0);
   const newClusterCount = clusters.filter(
-    (cluster) => cluster.status.toLowerCase() === "baru"
+    (cluster) => cluster.status === "active"
   ).length;
   const district =
     recentPoints.find((point) => point.kelurahan?.kecamatan)?.kelurahan
-      ?.kecamatan || "Banjarmasin Selatan";
+      ?.kecamatan ||
+    (clusters[0]?.kelurahanId &&
+    typeof clusters[0].kelurahanId === "object"
+      ? clusters[0].kelurahanId.kecamatan
+      : undefined) ||
+    "Banjarmasin Selatan";
+  const aqiValue = featuredCluster?.averageAqi ?? 118;
+  const areaName = featuredCluster
+    ? getClusterLocation(featuredCluster)
+    : "RW 04 Kelayan Selatan";
+  const retryClusters = () => {
+    setClustersLoading(true);
+    setClustersError(null);
+    setClusterRequestId((current) => current + 1);
+  };
 
   const exportCsv = () => {
     const rows = [
@@ -190,35 +203,48 @@ export default function DashboardPage() {
       <div className="min-h-screen w-full bg-[#F5F4ED]">
         <div className="grid min-h-screen gap-0 lg:grid-cols-[208px_minmax(0,1fr)] xl:grid-cols-[208px_minmax(0,1fr)_348px]">
           <Sidebar>
-            {clusters.length === 0 ? (
+            {clustersLoading ? (
               <p className="rounded-xl bg-white px-2.5 py-3 text-[11px] leading-relaxed text-[#708477]">
-                Belum ada laporan baru dalam 72 jam terakhir.
+                Memuat klaster aktif...
+              </p>
+            ) : clustersError ? (
+              <button
+                type="button"
+                onClick={retryClusters}
+                className="rounded-xl bg-white px-2.5 py-3 text-left text-[11px] leading-relaxed text-red-700"
+              >
+                Gagal memuat klaster. Coba lagi.
+              </button>
+            ) : visibleClusters.length === 0 ? (
+              <p className="rounded-xl bg-white px-2.5 py-3 text-[11px] leading-relaxed text-[#708477]">
+                Belum ada klaster aktif dalam kategori ini.
               </p>
             ) : (
-              clusters.slice(0, 3).map((cluster) => (
-                <div
-                  key={cluster.name}
+              visibleClusters.slice(0, 3).map((cluster) => (
+                <Link
+                  key={cluster._id}
+                  href={`/dashboard/clusters/${encodeURIComponent(cluster._id)}`}
                   className="rounded-xl bg-white px-2.5 py-2"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-[11px] font-bold text-[#264536]">
-                      {cluster.name}
+                      {getClusterLocation(cluster)}
                     </p>
                     <span
                       className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
-                        cluster.priority
+                        cluster.riskStatus === "Prioritas"
                           ? "bg-red-50 text-red-600"
                           : "bg-[#EAF5EE] text-[#176B45]"
                       }`}
                     >
-                      {cluster.priority ? "Prioritas" : cluster.status}
+                      {cluster.riskStatus}
                     </span>
                   </div>
                   <p className="mt-1 text-[10px] text-[#708477]">
-                    {cluster.reports} laporan · {cluster.ispa} ISPA ·{" "}
-                    {cluster.diare} Diare
+                    {cluster.reportCount} laporan ·{" "}
+                    {cluster.category.toUpperCase()}
                   </p>
-                </div>
+                </Link>
               ))
             )}
           </Sidebar>
@@ -251,18 +277,48 @@ export default function DashboardPage() {
                 className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-[#E7194B] px-3 py-2 text-[11px] font-bold text-white transition hover:bg-[#C91440]"
               >
                 <Bell size={14} />
-                {newClusterCount} Klaster Baru
+                {newClusterCount} Klaster Aktif
               </button>
             </header>
+
+            <section className="rounded-[22px] bg-gradient-to-br from-[#0A9A50] via-[#006B3C] to-[#00462C] p-4 text-white shadow-md xl:hidden">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h1 className="truncate text-lg font-bold">{areaName}</h1>
+                  <p className="mt-1 text-[11px] text-green-100">
+                    {featuredCluster
+                      ? `${featuredCluster.reportCount} laporan ${featuredCluster.category.toUpperCase()}`
+                      : `${recentPoints.length} laporan dalam 72 jam terakhir`}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-white/40 bg-red-500 px-2.5 py-1 text-[10px] font-bold">
+                  {featuredCluster?.riskStatus ?? "Terpantau"}
+                </span>
+              </div>
+
+              <div className="my-3 flex items-center gap-3">
+                <p className="text-5xl font-bold leading-none">{aqiValue}</p>
+                <div>
+                  <p className="text-sm font-bold">Indeks Kualitas Udara</p>
+                  <p className="mt-1 text-[10px] text-green-100">
+                    {featuredCluster
+                      ? `${featuredCluster.totalSickCount} orang terdampak`
+                      : `Kec. ${district}`}
+                  </p>
+                </div>
+              </div>
+
+              <AqiIndicator value={aqiValue} />
+            </section>
 
             <section
               id="map"
               aria-label="Peta klaster laporan"
-              className="flex min-h-[540px] flex-col rounded-[24px] bg-white p-3 shadow-sm xl:h-[calc(100vh-9rem)]"
+              className="flex min-h-[350px] flex-col rounded-[24px] bg-white p-3 shadow-sm xl:h-[calc(100vh-9rem)] xl:min-h-[540px]"
             >
-              <div className="relative min-h-[510px] flex-1 overflow-hidden rounded-[18px] bg-[#EDEBE4]">
+              <div className="relative min-h-[320px] flex-1 overflow-hidden rounded-[18px] bg-[#EDEBE4] xl:min-h-[510px]">
                 {loading ? (
-                  <div className="flex h-full min-h-[510px] items-center justify-center">
+                  <div className="flex h-full min-h-[320px] items-center justify-center xl:min-h-[510px]">
                     <div className="text-center text-[#38614B]">
                       <RefreshCw
                         size={24}
@@ -274,7 +330,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 ) : error ? (
-                  <div className="flex h-full min-h-[510px] flex-col items-center justify-center px-6 text-center">
+                  <div className="flex h-full min-h-[320px] flex-col items-center justify-center px-6 text-center xl:min-h-[510px]">
                     <p className="text-sm font-semibold text-red-700">
                       Peta gagal dimuat
                     </p>
@@ -288,39 +344,116 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 ) : (
-                  <MapView points={recentPoints} />
+                  <MapView points={recentPoints} clusters={visibleClusters} />
                 )}
               </div>
+            </section>
+
+            <section
+              id="clusters"
+              aria-labelledby="cluster-summary-heading"
+              className="rounded-[22px] bg-white p-4 shadow-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2
+                    id="cluster-summary-heading"
+                    className="text-sm font-bold text-[#264536]"
+                  >
+                    Klaster aktif
+                  </h2>
+                  <p className="mt-1 text-[11px] text-[#708477]">
+                    Detail lokasi dan risiko untuk tindak lanjut.
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-[#E9F4ED] px-2.5 py-1 text-[10px] font-semibold text-[#426451]">
+                  {visibleClusters.length}
+                </span>
+              </div>
+
+              {clustersLoading ? (
+                <p className="mt-4 text-xs text-[#708477]">
+                  Memuat data klaster...
+                </p>
+              ) : clustersError ? (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <p role="alert" className="text-xs text-red-700">
+                    {clustersError}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={retryClusters}
+                    className="rounded-full bg-[#E7F3EC] px-3 py-2 text-xs font-bold text-[#164A32]"
+                  >
+                    Coba lagi
+                  </button>
+                </div>
+              ) : featuredCluster ? (
+                <div className="mt-4 rounded-2xl border border-[#E3ECE6] bg-[#F7FAF7] p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-[#164A32]">
+                        {getClusterLocation(featuredCluster)}
+                      </p>
+                      <p className="mt-1 text-xs text-[#536D60]">
+                        {featuredCluster.reportCount} laporan{" "}
+                        {featuredCluster.category.toUpperCase()} ·{" "}
+                        {featuredCluster.totalSickCount} orang terdampak
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-[#E9F4ED] px-2.5 py-1 text-[10px] font-bold text-[#176B45]">
+                      {featuredCluster.riskStatus}
+                    </span>
+                  </div>
+                  <Link
+                    href={`/dashboard/clusters/${encodeURIComponent(featuredCluster._id)}`}
+                    className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#0B8749] to-[#00552F] px-4 py-3 text-xs font-bold text-white shadow-sm transition hover:brightness-110"
+                  >
+                    Lihat detail klaster
+                    <ChevronRight size={16} />
+                  </Link>
+                </div>
+              ) : (
+                <p className="mt-4 rounded-xl bg-[#F7FAF7] p-3 text-xs leading-relaxed text-[#708477]">
+                  Belum ada klaster aktif untuk filter yang dipilih. Marker
+                  laporan tetap ditampilkan di peta; klaster akan muncul setelah
+                  deteksi backend menemukannya.
+                </p>
+              )}
             </section>
           </section>
 
           <aside className="grid min-w-0 gap-4 p-4 sm:grid-cols-2 lg:col-start-2 xl:col-start-3 xl:row-start-1 xl:grid-cols-1">
-            <section className="rounded-[22px] bg-gradient-to-br from-[#0A9A50] via-[#006B3C] to-[#00462C] p-4 text-white shadow-md">
+            <section className="hidden rounded-[22px] bg-gradient-to-br from-[#0A9A50] via-[#006B3C] to-[#00462C] p-4 text-white shadow-md xl:block">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h1 className="text-lg font-bold">
-                    RW 04 Kelayan Selatan
+                    {areaName}
                   </h1>
                   <p className="mt-1 text-[11px] text-green-100">
-                    {recentPoints.length} laporan dalam 72 jam terakhir
+                    {featuredCluster
+                      ? `${featuredCluster.reportCount} laporan ${featuredCluster.category.toUpperCase()}`
+                      : `${recentPoints.length} laporan dalam 72 jam terakhir`}
                   </p>
                 </div>
                 <span className="rounded-full border border-white/40 bg-red-500 px-2.5 py-1 text-[10px] font-bold">
-                  {118 > 100 ? "Prioritas" : "Terpantau"}
+                  {featuredCluster?.riskStatus ?? "Terpantau"}
                 </span>
               </div>
 
               <div className="my-3 flex items-center gap-3">
-                <p className="text-5xl font-bold leading-none">118</p>
+                <p className="text-5xl font-bold leading-none">{aqiValue}</p>
                 <div>
-                  <p className="text-sm font-bold">Udara Tidak Sehat</p>
+                  <p className="text-sm font-bold">Indeks Kualitas Udara</p>
                   <p className="mt-1 text-[10px] text-green-100">
-                    Indeks Kualitas Udara (AQI)
+                    {featuredCluster
+                      ? `${featuredCluster.totalSickCount} orang terdampak`
+                      : `Kec. ${district}`}
                   </p>
                 </div>
               </div>
 
-              <AqiIndicator value={118} />
+              <AqiIndicator value={aqiValue} />
             </section>
 
             <div className="grid grid-cols-4 gap-1.5 rounded-2xl bg-white p-2 shadow-sm">

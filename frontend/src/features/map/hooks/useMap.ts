@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import axios from "axios";
 
 import { getPublicMap } from "@/services/map.service";
 
@@ -34,7 +35,30 @@ const EMPTY_MAP_DATA: PublicMapData = {
   },
 };
 
+const requestMapData = async (): Promise<PublicMapData> => {
+  const response = await getPublicMap();
+
+  if (!response.success) {
+    throw new Error("Gagal mengambil data peta.");
+  }
+
+  return response.data;
+};
+
+const getMapErrorMessage = (error: unknown): string => {
+  if (axios.isAxiosError(error) && !error.response) {
+    return `Tidak dapat terhubung ke backend peta di ${
+      process.env.NEXT_PUBLIC_API_URL || "URL API yang dikonfigurasi"
+    }. Pastikan backend berjalan, lalu coba lagi.`;
+  }
+
+  return error instanceof Error
+    ? error.message
+    : "Terjadi kesalahan saat mengambil data peta.";
+};
+
 export default function useMap() {
+  const refreshInProgress = useRef(false);
   const [selectedCategories, setSelectedCategories] =
     useState<string[]>(["ISPA", "Diare"]);
 
@@ -44,33 +68,66 @@ export default function useMap() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchMap = useCallback(async () => {
+  useEffect(() => {
+    let active = true;
+
+    requestMapData()
+      .then((data) => {
+        if (!active) return;
+        setMapData(data);
+        setError(null);
+      })
+      .catch((error: unknown) => {
+        if (active) setError(getMapErrorMessage(error));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const refreshMapData = useCallback(async (showLoading: boolean) => {
+    if (refreshInProgress.current) return;
+
+    refreshInProgress.current = true;
+    if (showLoading) setLoading(true);
+    setError(null);
+
     try {
-      setLoading(true);
-      setError(null);
-
-      const response = await getPublicMap();
-
-      if (!response.success) {
-        throw new Error("Gagal mengambil data peta.");
-      }
-
-      setMapData(response.data);
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Terjadi kesalahan saat mengambil data peta.";
-
-      setError(message);
+      setMapData(await requestMapData());
+    } catch (error: unknown) {
+      setError(getMapErrorMessage(error));
     } finally {
-      setLoading(false);
+      refreshInProgress.current = false;
+      if (showLoading) setLoading(false);
     }
   }, []);
 
+  const refetch = useCallback(
+    () => refreshMapData(true),
+    [refreshMapData]
+  );
+
   useEffect(() => {
-    fetchMap();
-  }, [fetchMap]);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshMapData(false);
+      }
+    };
+
+    const intervalId = window.setInterval(refreshWhenVisible, 15_000);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [refreshMapData]);
 
   const filteredPoints = useMemo(() => {
     return mapData.points.filter((point: MapPoint) =>
@@ -88,6 +145,6 @@ export default function useMap() {
 
     loading,
     error,
-    refetch: fetchMap,
+    refetch,
   };
 }

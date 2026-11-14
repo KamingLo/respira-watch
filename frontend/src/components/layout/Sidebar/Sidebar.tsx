@@ -86,7 +86,7 @@ export default function Sidebar({
       </nav>
 
       <section
-        id="clusters"
+        id="sidebar-clusters"
         className="mt-auto rounded-2xl bg-[#F7F6F0] p-3"
       >
         <h2 className="mb-2 text-[11px] font-bold text-[#264536]">
