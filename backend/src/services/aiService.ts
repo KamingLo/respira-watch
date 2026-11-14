@@ -11,7 +11,7 @@ import { Report, type CitizenReportCategory } from '../models/Report.js';
 import { AppError } from '../utils/AppError.js';
 import { deleteCache, delCache, getCache, setCache } from '../utils/cache.js';
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
 export const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 export const GEMINI_REQUEST_TIMEOUT_MS = 15_000;
 
