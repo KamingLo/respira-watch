@@ -1,0 +1,86 @@
+info:
+  name: Export cluster reports to CSV (Streaming)
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://localhost:4000/api/export/CLU-ISPA-S06210-E106845
+  headers:
+    - name: Accept
+      value: text/csv
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Standar Dokumentasi Tim — GET /api/export/:clusterId (CSV Streaming)
+
+  ## 1. Deskripsi Endpoint
+  Mengekspor seluruh data laporan warga (`Report`) yang tergabung di dalam satu klaster penyakit (`Cluster`) ke dalam berkas **CSV (UTF-8 with BOM)** menggunakan mekanisme **Node.js Stream Pipeline (`cursor.pipe(csvTransform).pipe(res)`)**.
+  Pendekatan *streaming* ini memastikan konsumsi memori RAM server tetap **konstan $O(1)$** karena dokumen tidak pernah dimuat sekaligus ke dalam array di memori.
+
+  ---
+
+  ## 2. Parameter Path
+  | Parameter | Tipe | Wajib | Contoh | Deskripsi |
+  | :--- | :--- | :--- | :--- | :--- |
+  | `clusterId` | `string` | Ya | `CLU-ISPA-S06210-E106845` atau `67346a109c8d440000e1f2a3` | Mendukung pencarian berdasarkan kode unik klaster (`clusterCode`) maupun MongoDB `ObjectId`. |
+
+  ---
+
+  ## 3. Header Response HTTP
+  | Header | Nilai | Keterangan |
+  | :--- | :--- | :--- |
+  | `Content-Type` | `text/csv; charset=utf-8` | Format berkas CSV berstandar UTF-8 (disertai prefix BOM `\uFEFF` agar langsung terbaca rapi di Microsoft Excel & Google Sheets). |
+  | `Content-Disposition` | `attachment; filename="respirawatch-<clusterCode>-<YYYY-MM-DD>.csv"` | Memicu unduhan berkas otomatis di peramban/klien. |
+  | `Transfer-Encoding` | `chunked` | Aliran data dikirim bertahap per baris dokumen dari Mongoose Cursor. |
+  | `Cache-Control` | `no-store` | Memastikan data ekspor selalu merefleksikan kondisi terbaru di database. |
+  | `X-Cluster-Code` | `CLU-ISPA-S06210-E106845` | Identitas kode klaster yang diekspor. |
+
+  ---
+
+  ## 4. Skema Kolom CSV & Keamanan (Anti-CSV Injection)
+  Setiap sel dibersihkan dari karakter baris baru (`\r\n`), di-*escape* ganda (`""`) jika mengandung koma/kutip/titik koma, dan diberi prefix tanda petik tunggal (`'`) apabila diawali karakter formula berbahaya (`=`, `+`, `-`, `@`) guna mencegah **CSV Formula Injection**.
+
+  Urutan 21 kolom pada CSV:
+  1. `cluster_code`
+  2. `cluster_category` (`ispa` / `diare`)
+  3. `cluster_risk_status` (`Waspada` / `Siaga` / `Prioritas`)
+  4. `cluster_status` (`active` / `monitoring` / `resolved`)
+  5. `cluster_average_aqi`
+  6. `report_id`
+  7. `reported_at_iso`
+  8. `reporter_name`
+  9. `disease_category`
+  10. `symptoms` (dipisahkan dengan `; `)
+  11. `sick_count`
+  12. `patient_age`
+  13. `severity`
+  14. `report_status`
+  15. `longitude`
+  16. `latitude`
+  17. `kelurahan_code`
+  18. `kelurahan_name`
+  19. `kecamatan`
+  20. `address`
+  21. `description`
+
+  ### Contoh Isi Output CSV (`200 OK`)
+  ```csv
+  cluster_code,cluster_category,cluster_risk_status,cluster_status,cluster_average_aqi,report_id,reported_at_iso,reporter_name,disease_category,symptoms,sick_count,patient_age,severity,report_status,longitude,latitude,kelurahan_code,kelurahan_name,kecamatan,address,description
+  CLU-ISPA-S06210-E106845,ispa,Siaga,active,138,67346a109c8d440000e1f299,2026-11-13T15:32:10.000Z,Warga Anonim,ispa,batuk kering; sesak napas,2,34,berat,pending,106.845612,-6.208814,31.74.01.1001,Manggarai,Tebet,Jl. Manggarai Utara II No. 12,Laporan warga kategori ISPA (batuk kering, sesak napas)
+  ```
+
+  ---
+
+  ## 5. Penanganan Error
+  | HTTP Status | Kondisi | Contoh Respons JSON |
+  | :--- | :--- | :--- |
+  | `400 Bad Request` | Parameter `clusterId` kosong. | `{ "success": false, "message": "Parameter clusterId wajib disertakan." }` |
+  | `404 Not Found` | Klaster dengan ID/kode tersebut tidak ditemukan. | `{ "success": false, "message": "Data klaster untuk ekspor CSV tidak ditemukan." }` |
+  | `500 Internal Server Error` | Kegagalan koneksi database sebelum stream dimulai. | `{ "success": false, "message": "Gagal mengekspor data laporan klaster ke format CSV." }` |

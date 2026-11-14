@@ -7,6 +7,8 @@ import mapRoutes from './routes/mapRoutes.js';
 import aqiRoutes from './routes/aqiRoutes.js';
 import clusterRoutes from './routes/clusterRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
+import analyticsRoutes from './routes/analyticsRoutes.js';
+import exportRoutes from './routes/exportRoutes.js';
 
 const router: Router = Router();
 
@@ -19,5 +21,7 @@ router.use('/map', mapRoutes);
 router.use('/aqi', aqiRoutes);
 router.use('/clusters', clusterRoutes);
 router.use('/ai', aiRoutes);
+router.use('/analytics', analyticsRoutes);
+router.use('/export', exportRoutes);
 
 export default router;

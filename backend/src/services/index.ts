@@ -5,3 +5,4 @@ export * from './reportService.js';
 export * from './aqiService.js';
 export * from './clusterService.js';
 export * from './aiService.js';
+export * from './analyticsService.js';
