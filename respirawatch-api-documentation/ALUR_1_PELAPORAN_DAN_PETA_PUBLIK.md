@@ -9,6 +9,7 @@ Dokumen ini menjelaskan spesifikasi teknis, arsitektur, validasi, rate-limiting,
 | Method | Endpoint | Akses | Deskripsi |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/reports` *(alias: `/reports`)* | Publik (Rate-Limited per `device_hash`) | Menerima laporan warga baru atau meng-update laporan yang sudah ada jika `device_hash` sama, lalu menghapus cache peta publik (`delCache('map:public:*')`). |
+| `GET` | `/api/reports?unmapped=true` | Admin (JWT) | Menampilkan laporan yang belum cocok dengan batas kelurahan yang tersedia untuk ditinjau admin. |
 | `GET` | `/api/map` *(alias: `/map`)* | Publik (Cached di Redis) | Mengembalikan titik laporan (dengan koordinat *jittered* 100–200m di memori) dan layer *heatmap* beserta ringkasan statistik. |
 
 ---
@@ -60,6 +61,8 @@ Endpoint mendukung penamaan atribut dalam **Bahasa Indonesia** maupun **Bahasa I
    - Jika `device_hash` sudah ada di database (dan masa cooldown 1 jam sudah lewat), sistem **cukup meng-update** dokumen laporan milik `device_hash` tersebut (tanpa membuat dokumen duplikat) dan mengembalikan **`200 OK`**.
 3. **Auto-Spatial Kelurahan Matching**:
    - Sistem secara otomatis mencocokkan titik `geom` dengan poligon batas wilayah Kelurahan menggunakan query MongoDB `$geoIntersects`.
+   - Pencocokan hanya menggunakan data kelurahan dan poligon yang sudah tersedia. Sistem tidak membuat data kelurahan resmi dari alamat atau titik laporan secara otomatis.
+   - Jika tidak ada poligon yang memuat titik laporan, `kelurahanId` tidak diisi. Admin dapat meninjau laporan tersebut melalui `GET /api/reports?unmapped=true`; petugas non-admin tidak dapat mengakses filter ini.
 
 ---
 
