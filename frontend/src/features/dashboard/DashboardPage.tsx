@@ -1,37 +1,53 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Activity,
   Bell,
   ChevronRight,
   ClipboardList,
   Download,
+  Flame,
+  Layers3,
   MapPin,
+  Radio,
   RefreshCw,
-  UserRound,
+  Wind,
 } from "lucide-react";
 
 import AqiIndicator from "@/features/aqi/components/AqiIndicator/AqiIndicator";
 import MapFilter from "@/features/map/components/MapFilter/MapFilter";
 import MapView from "@/features/map/components/MapView/MapView";
 import useMap from "@/features/map/hooks/useMap";
-import Sidebar from "@/components/layout/Sidebar/Sidebar";
 import { getClusters } from "@/services/cluster.service";
+import { getAqiByCoordinates } from "@/services/aqi.service";
+import { getAqiMap } from "@/services/map.service";
+import { getPublicKelurahans, type PublicKelurahan } from "@/services/kelurahan.service";
+import { isMapCategorySelected } from "@/features/map/utils/category";
+import {
+  getNasaFirmsHotspots,
+  getRiskScoreMap,
+} from "@/services/analytics.service";
+import useDashboardSocket from "@/hooks/useDashboardSocket";
 
 import type { MapPoint } from "@/types/map.types";
 import type { ClusterRecord } from "@/types/cluster.types";
+import type {
+  NasaFirmsHotspots,
+  RiskScoreMap,
+} from "@/types/analytics.types";
+import type { AqiResult } from "@/types/aqi.types";
+import type { AqiMapItem } from "@/types/map.types";
 
 const reportStatuses = [
-  { label: "Baru", key: "baru" },
-  { label: "Dipantau", key: "pantau" },
-  { label: "Verifikasi", key: "verifikasi" },
-  { label: "Selesai", key: "selesai" },
+  { label: "Baru", key: "pending" },
+  { label: "Dipantau", key: "in_progress" },
+  { label: "Verifikasi", key: "verified" },
+  { label: "Selesai", key: "resolved" },
 ];
 
-const getRecentPoints = (points: MapPoint[]) => {
-  const cutoff = Date.now() - 72 * 60 * 60 * 1000;
+const getRecentPoints = (points: MapPoint[], periodDays: number) => {
+  const cutoff = Date.now() - periodDays * 24 * 60 * 60 * 1000;
 
   return points.filter((point) => {
     const reportedAt = Date.parse(point.reportedAt);
@@ -85,24 +101,106 @@ const escapeCsv = (value: string | number | null | undefined) =>
   `"${String(value ?? "").replace(/"/g, '""')}"`;
 
 export default function DashboardPage() {
+  const [selectedKelurahanId, setSelectedKelurahanId] = useState("");
+  const [periodDays, setPeriodDays] = useState(3);
+  const [showAqiLayer, setShowAqiLayer] = useState(true);
+  const [aqiMap, setAqiMap] = useState<AqiMapItem[]>([]);
+  const [aqiMapError, setAqiMapError] = useState<string | null>(null);
+  const [kelurahans, setKelurahans] = useState<PublicKelurahan[]>([]);
+  const [kelurahanError, setKelurahanError] = useState<string | null>(null);
+  const mapFilters = useMemo(() => {
+    const end = new Date();
+    const start = new Date(end.getTime() - periodDays * 24 * 60 * 60 * 1000);
+    return {
+      ...(selectedKelurahanId ? { kelurahanId: selectedKelurahanId } : {}),
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+    };
+  }, [periodDays, selectedKelurahanId]);
   const {
     selectedCategories,
     setSelectedCategories,
     points,
+    heatmap,
     loading,
     error,
     refetch,
-  } = useMap();
+  } = useMap(mapFilters);
 
   const [clusters, setClusters] = useState<ClusterRecord[]>([]);
   const [clustersLoading, setClustersLoading] = useState(true);
   const [clustersError, setClustersError] = useState<string | null>(null);
   const [clusterRequestId, setClusterRequestId] = useState(0);
+  const [riskScores, setRiskScores] = useState<RiskScoreMap | null>(null);
+  const [riskScoresLoading, setRiskScoresLoading] = useState(false);
+  const [riskScoresError, setRiskScoresError] = useState<string | null>(null);
+  const [showRiskLayer, setShowRiskLayer] = useState(false);
+  const [hotspots, setHotspots] = useState<NasaFirmsHotspots | null>(null);
+  const [hotspotsLoading, setHotspotsLoading] = useState(false);
+  const [hotspotsError, setHotspotsError] = useState<string | null>(null);
+  const [showHotspotsLayer, setShowHotspotsLayer] = useState(false);
+  const [aqiData, setAqiData] = useState<AqiResult | null>(null);
+  const [aqiLoadedKey, setAqiLoadedKey] = useState<string | null>(null);
+  const [aqiError, setAqiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getPublicKelurahans()
+      .then((items) => {
+        if (active) setKelurahans(items);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setKelurahanError(
+            error instanceof Error ? error.message : "Gagal memuat kelurahan."
+          );
+        }
+      });
+    getAqiMap()
+      .then((data) => {
+        if (active) setAqiMap(data.items);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setAqiMapError(
+            error instanceof Error ? error.message : "Gagal memuat lapisan AQI."
+          );
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const refreshClusters = useCallback(() => {
+    setClustersLoading(true);
+    setClustersError(null);
+    setClusterRequestId((current) => current + 1);
+  }, []);
+
+  const refreshDashboardData = useCallback(() => {
+    void refetch();
+    refreshClusters();
+  }, [refetch, refreshClusters]);
+
+  const socketState = useDashboardSocket({
+    onReportNew: () => {
+      void refetch();
+    },
+    onClusterChanged: refreshDashboardData,
+  });
 
   useEffect(() => {
     let active = true;
 
-    getClusters()
+    getClusters({
+      ...(selectedCategories.length === 1
+        ? { category: selectedCategories[0].toLowerCase() }
+        : {}),
+      ...(selectedKelurahanId ? { kelurahanId: selectedKelurahanId } : {}),
+      ...mapFilters,
+    })
       .then((data) => {
         if (active) setClusters(data);
       })
@@ -122,27 +220,116 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [clusterRequestId]);
+  }, [
+    clusterRequestId,
+    selectedCategories,
+    selectedKelurahanId,
+    mapFilters,
+  ]);
 
-  const recentPoints = useMemo(() => getRecentPoints(points), [points]);
+  const recentPoints = useMemo(
+    () => getRecentPoints(points, periodDays),
+    [points, periodDays]
+  );
   const visibleClusters = useMemo(
     () =>
       clusters.filter((cluster) =>
-        selectedCategories.includes(cluster.category.toUpperCase())
+        isMapCategorySelected(cluster.category, selectedCategories)
       ),
     [clusters, selectedCategories]
   );
+  const activeClusters = useMemo(
+    () => visibleClusters.filter((cluster) => cluster.status === "active"),
+    [visibleClusters]
+  );
   const featuredCluster = visibleClusters[0] ?? null;
   const weeklyTrend = useMemo(() => getWeeklyTrend(points), [points]);
+  const aqiLatitude = featuredCluster?.center.coordinates[1] ?? -3.344;
+  const aqiLongitude = featuredCluster?.center.coordinates[0] ?? 114.591;
+  const aqiRequestKey = `${aqiLatitude},${aqiLongitude}`;
+  const aqiLoading = aqiLoadedKey !== aqiRequestKey;
+
+  useEffect(() => {
+    let active = true;
+
+    getAqiByCoordinates(aqiLatitude, aqiLongitude)
+      .then((data) => {
+        if (active) {
+          setAqiData(data);
+          setAqiError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setAqiError(
+            error instanceof Error
+              ? error.message
+              : "Gagal memuat data kualitas udara."
+          );
+          setAqiData(null);
+        }
+      })
+      .finally(() => {
+        if (active) setAqiLoadedKey(aqiRequestKey);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [aqiLatitude, aqiLongitude, aqiRequestKey]);
+
+  const loadRiskScores = useCallback(async () => {
+    setRiskScoresLoading(true);
+    setRiskScoresError(null);
+    try {
+      setRiskScores(await getRiskScoreMap());
+    } catch (error: unknown) {
+      setRiskScoresError(
+        error instanceof Error
+          ? error.message
+          : "Gagal memuat skor risiko area."
+      );
+      setShowRiskLayer(false);
+    } finally {
+      setRiskScoresLoading(false);
+    }
+  }, []);
+
+  const loadHotspots = useCallback(async () => {
+    setHotspotsLoading(true);
+    setHotspotsError(null);
+    try {
+      setHotspots(await getNasaFirmsHotspots());
+    } catch (error: unknown) {
+      setHotspotsError(
+        error instanceof Error
+          ? error.message
+          : "Gagal memuat titik api."
+      );
+      setShowHotspotsLayer(false);
+    } finally {
+      setHotspotsLoading(false);
+    }
+  }, []);
+
+  const toggleRiskLayer = () => {
+    const shouldShow = !showRiskLayer;
+    setShowRiskLayer(shouldShow);
+    if (shouldShow && !riskScores) void loadRiskScores();
+  };
+
+  const toggleHotspotsLayer = () => {
+    const shouldShow = !showHotspotsLayer;
+    setShowHotspotsLayer(shouldShow);
+    if (shouldShow && !hotspots) void loadHotspots();
+  };
 
   const weeklyMaximum = Math.max(
     1,
     ...weeklyTrend.map((day) => day.count)
   );
   const weeklyTotal = weeklyTrend.reduce((total, day) => total + day.count, 0);
-  const newClusterCount = clusters.filter(
-    (cluster) => cluster.status === "active"
-  ).length;
+  const newClusterCount = activeClusters.length;
   const district =
     recentPoints.find((point) => point.kelurahan?.kecamatan)?.kelurahan
       ?.kecamatan ||
@@ -151,15 +338,16 @@ export default function DashboardPage() {
       ? clusters[0].kelurahanId.kecamatan
       : undefined) ||
     "Banjarmasin Selatan";
-  const aqiValue = featuredCluster?.averageAqi ?? 118;
+  const aqiValue = aqiData?.weatherAqi.aqi;
   const areaName = featuredCluster
     ? getClusterLocation(featuredCluster)
     : "RW 04 Kelayan Selatan";
-  const retryClusters = () => {
-    setClustersLoading(true);
-    setClustersError(null);
-    setClusterRequestId((current) => current + 1);
-  };
+  const selectedKelurahanName = kelurahans.find(
+    (kelurahan) => kelurahan.id === selectedKelurahanId
+  )?.name;
+  const selectedPeriodLabel =
+    periodDays === 3 ? "72 jam terakhir" : `${periodDays} hari terakhir`;
+  const retryClusters = refreshClusters;
 
   const exportCsv = () => {
     const rows = [
@@ -199,56 +387,9 @@ export default function DashboardPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#F5F4ED] pb-20 lg:pb-0">
+    <main className="min-h-screen bg-[#F5F4ED]">
       <div className="min-h-screen w-full bg-[#F5F4ED]">
-        <div className="grid min-h-screen gap-0 lg:grid-cols-[208px_minmax(0,1fr)] xl:grid-cols-[208px_minmax(0,1fr)_348px]">
-          <Sidebar>
-            {clustersLoading ? (
-              <p className="rounded-xl bg-white px-2.5 py-3 text-[11px] leading-relaxed text-[#708477]">
-                Memuat klaster aktif...
-              </p>
-            ) : clustersError ? (
-              <button
-                type="button"
-                onClick={retryClusters}
-                className="rounded-xl bg-white px-2.5 py-3 text-left text-[11px] leading-relaxed text-red-700"
-              >
-                Gagal memuat klaster. Coba lagi.
-              </button>
-            ) : visibleClusters.length === 0 ? (
-              <p className="rounded-xl bg-white px-2.5 py-3 text-[11px] leading-relaxed text-[#708477]">
-                Belum ada klaster aktif dalam kategori ini.
-              </p>
-            ) : (
-              visibleClusters.slice(0, 3).map((cluster) => (
-                <Link
-                  key={cluster._id}
-                  href={`/dashboard/clusters/${encodeURIComponent(cluster._id)}`}
-                  className="rounded-xl bg-white px-2.5 py-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-[11px] font-bold text-[#264536]">
-                      {getClusterLocation(cluster)}
-                    </p>
-                    <span
-                      className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
-                        cluster.riskStatus === "Prioritas"
-                          ? "bg-red-50 text-red-600"
-                          : "bg-[#EAF5EE] text-[#176B45]"
-                      }`}
-                    >
-                      {cluster.riskStatus}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[10px] text-[#708477]">
-                    {cluster.reportCount} laporan ·{" "}
-                    {cluster.category.toUpperCase()}
-                  </p>
-                </Link>
-              ))
-            )}
-          </Sidebar>
-
+        <div className="grid min-h-screen gap-0 xl:grid-cols-[minmax(0,1fr)_348px]">
           <section className="flex min-w-0 flex-col gap-4 p-4">
             <header className="flex min-h-14 flex-wrap items-center gap-2 rounded-2xl bg-white px-3 py-2 shadow-sm md:px-4">
               <span className="inline-flex items-center gap-2 rounded-full bg-[#E9F4ED] px-3 py-2 text-[11px] font-semibold text-[#385C4A]">
@@ -264,9 +405,59 @@ export default function DashboardPage() {
               </div>
 
               <span className="rounded-full bg-[#E9F4ED] px-3 py-2 text-[11px] font-semibold text-[#385C4A]">
-                72 Jam Terakhir
+                <label htmlFor="dashboard-period" className="sr-only">
+                  Rentang waktu
+                </label>
+                <select
+                  id="dashboard-period"
+                  value={periodDays}
+                  onChange={(event) => setPeriodDays(Number(event.target.value))}
+                  className="bg-transparent text-[11px] font-semibold text-[#385C4A] outline-none"
+                >
+                  <option value={3}>72 jam terakhir</option>
+                  <option value={7}>7 hari terakhir</option>
+                  <option value={14}>14 hari terakhir</option>
+                </select>
               </span>
-
+              <label htmlFor="dashboard-kelurahan" className="sr-only">
+                Filter kelurahan
+              </label>
+              <select
+                id="dashboard-kelurahan"
+                value={selectedKelurahanId}
+                onChange={(event) => setSelectedKelurahanId(event.target.value)}
+                aria-describedby={kelurahanError ? "kelurahan-filter-error" : undefined}
+                className="max-w-[200px] rounded-full bg-[#E9F4ED] px-3 py-2 text-[11px] font-semibold text-[#385C4A] outline-none"
+              >
+                <option value="">Semua kelurahan</option>
+                {kelurahans.map((kelurahan) => (
+                  <option key={kelurahan.id} value={kelurahan.id}>
+                    {kelurahan.name}
+                  </option>
+                ))}
+              </select>
+              {kelurahanError && (
+                <span id="kelurahan-filter-error" className="sr-only">
+                  {kelurahanError}
+                </span>
+              )}
+              <span
+                title={socketState.error ?? "Koneksi real-time dashboard"}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[10px] font-bold ${
+                  socketState.status === "connected"
+                    ? "bg-[#E1F4E8] text-[#176B45]"
+                    : socketState.status === "connecting"
+                      ? "bg-amber-50 text-amber-800"
+                      : "bg-red-50 text-red-700"
+                }`}
+              >
+                <Radio size={13} />
+                {socketState.status === "connected"
+                  ? "Live"
+                  : socketState.status === "connecting"
+                    ? "Menghubungkan"
+                    : "Live terputus"}
+              </span>
               <button
                 type="button"
                 onClick={() =>
@@ -280,6 +471,12 @@ export default function DashboardPage() {
                 {newClusterCount} Klaster Aktif
               </button>
             </header>
+
+            <p className="px-1 text-xs text-[#708477]">
+              Cakupan angka petugas: {selectedPeriodLabel} ·{" "}
+              {selectedKelurahanName ?? "semua kelurahan"} · kategori sesuai
+              filter · laporan ditolak tidak dihitung.
+            </p>
 
             <section className="rounded-[22px] bg-gradient-to-br from-[#0A9A50] via-[#006B3C] to-[#00462C] p-4 text-white shadow-md xl:hidden">
               <div className="flex items-start justify-between gap-3">
@@ -297,18 +494,23 @@ export default function DashboardPage() {
               </div>
 
               <div className="my-3 flex items-center gap-3">
-                <p className="text-5xl font-bold leading-none">{aqiValue}</p>
+                <p className="text-5xl font-bold leading-none">
+                  {aqiValue ?? (aqiLoading ? "…" : "—")}
+                </p>
                 <div>
                   <p className="text-sm font-bold">Indeks Kualitas Udara</p>
                   <p className="mt-1 text-[10px] text-green-100">
-                    {featuredCluster
+                    {aqiData?.areaStatus.statusLabel ??
+                      (aqiError
+                        ? "AQI belum tersedia"
+                        : featuredCluster
                       ? `${featuredCluster.totalSickCount} orang terdampak`
-                      : `Kec. ${district}`}
+                      : `Kec. ${district}`)}
                   </p>
                 </div>
               </div>
 
-              <AqiIndicator value={aqiValue} />
+              {aqiValue !== undefined && <AqiIndicator value={aqiValue} />}
             </section>
 
             <section
@@ -316,6 +518,76 @@ export default function DashboardPage() {
               aria-label="Peta klaster laporan"
               className="flex min-h-[350px] flex-col rounded-[24px] bg-white p-3 shadow-sm xl:h-[calc(100vh-9rem)] xl:min-h-[540px]"
             >
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAqiLayer((visible) => !visible)}
+                  aria-pressed={showAqiLayer}
+                  className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold transition ${
+                    showAqiLayer
+                      ? "border-[#087546] bg-[#E2F2E8] text-[#164A32]"
+                      : "border-[#D5E2D9] bg-white text-[#536D60]"
+                  }`}
+                >
+                  <Wind size={14} />
+                  Lapisan AQI
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleRiskLayer}
+                  disabled={riskScoresLoading}
+                  aria-pressed={showRiskLayer}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold transition disabled:cursor-wait disabled:opacity-70 ${
+                    showRiskLayer
+                      ? "border-[#087546] bg-[#E2F2E8] text-[#164A32]"
+                      : "border-[#D5E2D9] bg-white text-[#536D60] hover:bg-[#F4F8F5]"
+                  }`}
+                >
+                  {riskScoresLoading ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Layers3 size={14} />
+                  )}
+                  {riskScoresLoading ? "Memuat risiko..." : "Skor risiko"}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleHotspotsLayer}
+                  disabled={hotspotsLoading}
+                  aria-pressed={showHotspotsLayer}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold transition disabled:cursor-wait disabled:opacity-70 ${
+                    showHotspotsLayer
+                      ? "border-orange-400 bg-orange-50 text-orange-800"
+                      : "border-[#D5E2D9] bg-white text-[#536D60] hover:bg-[#F4F8F5]"
+                  }`}
+                >
+                  {hotspotsLoading ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Flame size={14} />
+                  )}
+                  {hotspotsLoading ? "Memuat hotspot..." : "Titik api"}
+                </button>
+                {showRiskLayer && riskScores && (
+                  <span className="text-[10px] text-[#536D60]">
+                    {riskScores.totalGrids} grid · rata-rata{" "}
+                    {riskScores.summary.averageScore.toFixed(1)}/100
+                  </span>
+                )}
+                {showHotspotsLayer && hotspots && (
+                  <span className="text-[10px] text-[#536D60]">
+                    {hotspots.totalHotspots} hotspot · {hotspots.sourceSatellite}
+                  </span>
+                )}
+              </div>
+              {(aqiMapError || riskScoresError || hotspotsError || hotspots?.cache.upstreamNotice) && (
+                <p
+                  role="status"
+                  className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] text-amber-900"
+                >
+                  {aqiMapError ?? riskScoresError ?? hotspotsError ?? hotspots?.cache.upstreamNotice}
+                </p>
+              )}
               <div className="relative min-h-[320px] flex-1 overflow-hidden rounded-[18px] bg-[#EDEBE4] xl:min-h-[510px]">
                 {loading ? (
                   <div className="flex h-full min-h-[320px] items-center justify-center xl:min-h-[510px]">
@@ -344,7 +616,18 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 ) : (
-                  <MapView points={recentPoints} clusters={visibleClusters} />
+                  <MapView
+                    points={recentPoints}
+                    heatmap={heatmap}
+                    aqiItems={showAqiLayer ? aqiMap : []}
+                    clusters={visibleClusters}
+                    riskScores={
+                      showRiskLayer && riskScores ? riskScores.items : []
+                    }
+                    hotspots={
+                      showHotspotsLayer && hotspots ? hotspots.hotspots : []
+                    }
+                  />
                 )}
               </div>
             </section>
@@ -367,7 +650,7 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <span className="shrink-0 rounded-full bg-[#E9F4ED] px-2.5 py-1 text-[10px] font-semibold text-[#426451]">
-                  {visibleClusters.length}
+                  {activeClusters.length}
                 </span>
               </div>
 
@@ -388,30 +671,49 @@ export default function DashboardPage() {
                     Coba lagi
                   </button>
                 </div>
-              ) : featuredCluster ? (
-                <div className="mt-4 rounded-2xl border border-[#E3ECE6] bg-[#F7FAF7] p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-[#164A32]">
-                        {getClusterLocation(featuredCluster)}
+              ) : activeClusters.length > 0 ? (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {activeClusters.map((cluster) => (
+                    <Link
+                      key={cluster._id}
+                      href={`/dashboard/clusters/${encodeURIComponent(cluster._id)}`}
+                      className="block rounded-2xl border border-[#E3ECE6] bg-[#F7FAF7] p-3 transition hover:border-[#9BC8AA] hover:bg-[#F0F7F2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#087546]"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-[#164A32]">
+                            {getClusterLocation(cluster)}
+                          </p>
+                          {getClusterLocation(cluster) !==
+                            cluster.clusterCode && (
+                            <p className="mt-1 text-[10px] text-[#708477]">
+                              {cluster.clusterCode}
+                            </p>
+                          )}
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                            cluster.riskStatus === "Prioritas"
+                              ? "bg-red-50 text-red-700"
+                              : cluster.riskStatus === "Siaga"
+                                ? "bg-orange-50 text-orange-700"
+                                : "bg-yellow-50 text-yellow-800"
+                          }`}
+                        >
+                          {cluster.riskStatus}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-xs text-[#536D60]">
+                        {cluster.reportCount} laporan{" "}
+                        {cluster.category.toUpperCase()} ·{" "}
+                        {cluster.totalSickCount} orang terdampak
                       </p>
-                      <p className="mt-1 text-xs text-[#536D60]">
-                        {featuredCluster.reportCount} laporan{" "}
-                        {featuredCluster.category.toUpperCase()} ·{" "}
-                        {featuredCluster.totalSickCount} orang terdampak
-                      </p>
-                    </div>
-                    <span className="shrink-0 rounded-full bg-[#E9F4ED] px-2.5 py-1 text-[10px] font-bold text-[#176B45]">
-                      {featuredCluster.riskStatus}
-                    </span>
-                  </div>
-                  <Link
-                    href={`/dashboard/clusters/${encodeURIComponent(featuredCluster._id)}`}
-                    className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#0B8749] to-[#00552F] px-4 py-3 text-xs font-bold text-white shadow-sm transition hover:brightness-110"
-                  >
-                    Lihat detail klaster
-                    <ChevronRight size={16} />
-                  </Link>
+                      <span className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-[#087546]">
+                        Lihat detail klaster
+                        <ChevronRight size={15} />
+                      </span>
+                    </Link>
+                  ))}
                 </div>
               ) : (
                 <p className="mt-4 rounded-xl bg-[#F7FAF7] p-3 text-xs leading-relaxed text-[#708477]">
@@ -423,7 +725,7 @@ export default function DashboardPage() {
             </section>
           </section>
 
-          <aside className="grid min-w-0 gap-4 p-4 sm:grid-cols-2 lg:col-start-2 xl:col-start-3 xl:row-start-1 xl:grid-cols-1">
+          <aside className="grid min-w-0 gap-4 p-4 sm:grid-cols-2 xl:grid-cols-1">
             <section className="hidden rounded-[22px] bg-gradient-to-br from-[#0A9A50] via-[#006B3C] to-[#00462C] p-4 text-white shadow-md xl:block">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -442,18 +744,23 @@ export default function DashboardPage() {
               </div>
 
               <div className="my-3 flex items-center gap-3">
-                <p className="text-5xl font-bold leading-none">{aqiValue}</p>
+                <p className="text-5xl font-bold leading-none">
+                  {aqiValue ?? (aqiLoading ? "…" : "—")}
+                </p>
                 <div>
                   <p className="text-sm font-bold">Indeks Kualitas Udara</p>
                   <p className="mt-1 text-[10px] text-green-100">
-                    {featuredCluster
+                    {aqiData?.areaStatus.statusLabel ??
+                      (aqiError
+                        ? "AQI belum tersedia"
+                        : featuredCluster
                       ? `${featuredCluster.totalSickCount} orang terdampak`
-                      : `Kec. ${district}`}
+                      : `Kec. ${district}`)}
                   </p>
                 </div>
               </div>
 
-              <AqiIndicator value={aqiValue} />
+              {aqiValue !== undefined && <AqiIndicator value={aqiValue} />}
             </section>
 
             <div className="grid grid-cols-4 gap-1.5 rounded-2xl bg-white p-2 shadow-sm">
@@ -487,7 +794,7 @@ export default function DashboardPage() {
             >
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-bold text-[#264536]">
-                  Tren 7 Hari &amp; Ringkasan
+                  Tren Laporan 7 Hari
                 </h2>
                 <span className="rounded-full bg-[#E9F4ED] px-2.5 py-1 text-[10px] font-semibold text-[#426451]">
                   {weeklyTotal} laporan
@@ -557,7 +864,7 @@ export default function DashboardPage() {
 
               <p className="mt-4 text-xs leading-relaxed text-[#536D60]">
                 {weeklyTotal > 0
-                  ? `${weeklyTotal} laporan tercatat dalam 7 hari terakhir. Pantau perubahan kualitas udara dan tindak lanjuti laporan prioritas.`
+                  ? `${weeklyTotal} laporan kesehatan tercatat dalam 7 hari terakhir.`
                   : "Belum ada laporan yang tercatat dalam 7 hari terakhir."}
               </p>
             </section>
@@ -584,41 +891,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <nav
-        aria-label="Navigasi dashboard mobile"
-        className="fixed bottom-3 left-1/2 z-[1100] w-[calc(100%-2rem)] max-w-[480px] -translate-x-1/2 rounded-full border-2 border-[#B5D2C3] bg-white p-2 shadow-[0_8px_25px_rgba(0,80,45,0.12)] lg:hidden"
-      >
-        <div className="flex h-14 items-center gap-1">
-          <Link
-            href="/dashboard#map"
-            aria-label="Peta Klaster"
-            className="flex h-12 flex-1 items-center justify-center rounded-full bg-[#006B3C] text-white"
-          >
-            <MapPin size={24} />
-          </Link>
-          <Link
-            href="/dashboard#clusters"
-            aria-label="Daftar Laporan"
-            className="flex h-12 flex-1 items-center justify-center rounded-full text-[#0B2D1E] hover:bg-green-50"
-          >
-            <ClipboardList size={24} />
-          </Link>
-          <Link
-            href="/dashboard#trend"
-            aria-label="Tren Kualitas Udara"
-            className="flex h-12 flex-1 items-center justify-center rounded-full text-[#0B2D1E] hover:bg-green-50"
-          >
-            <Activity size={24} />
-          </Link>
-          <Link
-            href="/login"
-            aria-label="Akun Petugas"
-            className="flex h-12 flex-1 items-center justify-center rounded-full text-[#0B2D1E] hover:bg-green-50"
-          >
-            <UserRound size={24} />
-          </Link>
-        </div>
-      </nav>
     </main>
   );
 }

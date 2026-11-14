@@ -1,195 +1,145 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import {
-  Bell,
-  FileText,
-  RefreshCw,
-} from "lucide-react";
+import { useCallback, useState } from "react";
+import Link from "next/link";
+import { ArrowRight, FileText, MapPin } from "lucide-react";
 
-import Button from "@/components/ui/Button/Button";
-import Card from "@/components/ui/Card/Card";
-import Badge from "@/components/ui/Badge/Badge";
-
-import MapView from "@/features/map/components/MapView/MapView";
-import MapFilter from "@/features/map/components/MapFilter/MapFilter";
-import MapLegend from "@/features/map/components/MapLegend/MapLegend";
 import AqiCard from "@/features/aqi/components/AqiCard/AqiCard";
-
+import Card from "@/components/ui/Card/Card";
 import useMap from "@/features/map/hooks/useMap";
+import { getAqiByCoordinates } from "@/services/aqi.service";
+import type { AqiResult } from "@/types/aqi.types";
 
-export default function HomePage() {
-  const router = useRouter();
+export default function CitizenHomePage() {
+  const { summary, loading, error } = useMap();
+  const [aqiData, setAqiData] = useState<AqiResult | null>(null);
+  const [aqiLoading, setAqiLoading] = useState(false);
+  const [aqiError, setAqiError] = useState<string | null>(null);
 
-  const {
-    selectedCategories,
-    setSelectedCategories,
-    points,
-    loading,
-    error,
-    refetch,
-  } = useMap();
+  const requestNearbyAqi = useCallback(() => {
+    if (!navigator.geolocation) {
+      setAqiError("Browser ini tidak mendukung akses lokasi.");
+      return;
+    }
 
-  const handleReport = () => {
-    router.push("/lapor");
-  };
-
-  // Menghitung jumlah laporan berdasarkan filter aktif
-  const ispaCount = points.filter(
-    (point) => point.category.toLowerCase() === "ispa"
-  ).length;
-
-  const diareCount = points.filter(
-    (point) => point.category.toLowerCase() === "diare"
-  ).length;
+    setAqiLoading(true);
+    setAqiError(null);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        getAqiByCoordinates(coords.latitude, coords.longitude)
+          .then(setAqiData)
+          .catch((requestError: unknown) => {
+            setAqiError(
+              requestError instanceof Error
+                ? requestError.message
+                : "Gagal memuat kualitas udara di lokasi ini."
+            );
+          })
+          .finally(() => setAqiLoading(false));
+      },
+      (locationError) => {
+        setAqiLoading(false);
+        setAqiError(
+          locationError.code === locationError.PERMISSION_DENIED
+            ? "Izin lokasi ditolak. Aktifkan izin lokasi untuk melihat AQI sekitar."
+            : "Lokasi belum bisa didapatkan. Coba lagi."
+        );
+      },
+      { enableHighAccuracy: false, timeout: 10_000 }
+    );
+  }, []);
 
   return (
     <main className="min-h-screen bg-[#EDF2EE] p-4 pb-28 md:p-6">
-      <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mx-auto max-w-5xl space-y-5">
+        <header className="space-y-2">
+          <p className="text-sm font-semibold text-[#176B45]">RespiraWatch</p>
+          <h1 className="text-2xl font-bold text-[#123D2B] md:text-3xl">
+            Beranda Warga
+          </h1>
+          <p className="text-sm text-gray-600">
+            Pantau kualitas udara dan laporan kesehatan di wilayahmu.
+          </p>
+        </header>
 
-        {/* MAIN CONTENT */}
-        <section className="min-w-0 space-y-5">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <AqiCard
+            data={aqiData}
+            loading={aqiLoading}
+            error={aqiError}
+            onRefresh={requestNearbyAqi}
+          />
 
-          {/* HEADER */}
-          <header className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm text-gray-500">
-                Halo, Rina 👋
-              </p>
-
-              <h1 className="mt-1 text-xl font-bold text-[#123D2B] md:text-2xl">
-                Pantau Udara & Gejala
-              </h1>
-
-              <p className="mt-1 text-sm text-gray-500">
-                Pantau kondisi lingkungan di sekitarmu.
-              </p>
-            </div>
-
-            <button
-              aria-label="Notifikasi"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-green-800 shadow-sm transition hover:bg-green-50"
-            >
-              <Bell size={21} />
-            </button>
-          </header>
-
-          <div className="lg:hidden">
-            <AqiCard
-              value={118}
-              location="Kel. Kelayan Selatan"
-              subLocation="RW 04 · Banjarmasin Selatan"
-            />
-          </div>
-
-          {/* MAP CARD */}
-          <Card className="!p-3 md:!p-5">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <Card className="!p-5">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="font-bold text-gray-800">
-                  Peta Persebaran Laporan
+                <h2 className="text-lg font-bold text-[#123D2B]">
+                  Ringkasan laporan
                 </h2>
-
-                <p className="mt-1 text-xs text-gray-500">
-                  Pantau laporan gejala di sekitar wilayahmu.
+                <p className="mt-1 text-sm text-gray-600">
+                  Laporan terpetakan yang tidak ditolak.
                 </p>
               </div>
-
-              <MapFilter
-                selectedCategories={selectedCategories}
-                onChange={setSelectedCategories}
-              />
+              <div className="rounded-xl bg-[#EAF5EE] p-2 text-[#176B45]">
+                <MapPin size={22} />
+              </div>
             </div>
 
-            {/* MAP CONTENT */}
-            <div className="relative h-[350px] overflow-hidden rounded-xl md:h-[500px] lg:h-[calc(100vh-280px)] lg:min-h-[520px]">
+            {error ? (
+              <p role="status" className="mt-5 text-sm text-red-700">
+                Gagal memuat ringkasan laporan: {error}
+              </p>
+            ) : (
+              <>
+                <p className="mt-5 text-4xl font-bold text-[#176B45]">
+                  {loading ? "…" : summary.totalReports}
+                </p>
+                <p className="text-sm text-gray-600">laporan seluruh wilayah</p>
 
-              {loading ? (
-                <div className="flex h-full items-center justify-center bg-green-50">
-                  <div className="text-center">
-                    <RefreshCw
-                      size={25}
-                      className="mx-auto animate-spin text-green-700"
-                    />
-
-                    <p className="mt-3 text-sm text-green-800">
-                      Memuat data peta...
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-[#F3F8F4] p-3">
+                    <p className="text-xs text-gray-600">ISPA</p>
+                    <p className="mt-1 text-xl font-bold text-[#176B45]">
+                      {loading ? "…" : summary.byCategory.ispa}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-[#F3F8F4] p-3">
+                    <p className="text-xs text-gray-600">Diare</p>
+                    <p className="mt-1 text-xl font-bold text-[#176B45]">
+                      {loading ? "…" : summary.byCategory.diare}
                     </p>
                   </div>
                 </div>
-              ) : error ? (
-                <div className="flex h-full flex-col items-center justify-center bg-green-50 px-4 text-center">
-                  <p className="font-semibold text-red-700">
-                    Gagal memuat data peta
-                  </p>
+              </>
+            )}
 
-                  <p className="mt-2 text-sm text-gray-600">
-                    {error}
-                  </p>
-
-                  <button
-                    onClick={refetch}
-                    className="mt-4 flex items-center gap-2 rounded-full bg-green-800 px-4 py-2 text-sm font-semibold text-white hover:bg-green-900"
-                  >
-                    <RefreshCw size={15} />
-                    Coba Lagi
-                  </button>
-                </div>
-              ) : (
-                <MapView points={points} />
-              )}
-            </div>
-
-            {/* MAP LEGEND */}
-            <div className="mt-4">
-              <MapLegend />
-            </div>
-
-            {/* REPORT SUMMARY */}
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
-              <div>
-                <p className="text-xs text-gray-500">
-                  Laporan sesuai filter
-                </p>
-
-                <p className="mt-1 text-lg font-bold text-green-800">
-                  {points.length} laporan
-                </p>
-              </div>
-
-              <div className="flex gap-2">
-                <Badge variant="success">
-                  ISPA: {ispaCount}
-                </Badge>
-
-                <Badge variant="warning">
-                  Diare: {diareCount}
-                </Badge>
-              </div>
-            </div>
+            <Link
+              href="/peta"
+              className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#006B3C] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#005631]"
+            >
+              Lihat peta laporan
+              <ArrowRight size={17} />
+            </Link>
           </Card>
+        </div>
 
-          {/* REPORT BUTTON */}
-          <Button
-            fullWidth
-            size="large"
-            onClick={handleReport}
-            className="!rounded-full !bg-gradient-to-r !from-green-700 !to-green-900 !py-4 shadow-lg"
+        <Card className="flex flex-col items-start justify-between gap-4 !p-5 sm:flex-row sm:items-center">
+          <div>
+            <h2 className="text-lg font-bold text-[#123D2B]">
+              Ada gejala yang ingin dilaporkan?
+            </h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Bantu petugas memantau kondisi kesehatan di lingkunganmu.
+            </p>
+          </div>
+          <Link
+            href="/lapor"
+            className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-gradient-to-r from-green-700 to-green-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"
           >
-            <FileText size={19} />
-            Lapor Gejala
-          </Button>
-        </section>
-
-        {/* DESKTOP INFORMATION PANEL */}
-        <aside className="hidden min-w-0 space-y-5 lg:sticky lg:top-20 lg:block lg:self-start">
-
-          <AqiCard
-            value={118}
-            location="Kel. Kelayan Selatan"
-            subLocation="RW 04 · Banjarmasin Selatan"
-          />
-        </aside>
+            <FileText size={18} />
+            Lapor gejala
+          </Link>
+        </Card>
       </div>
     </main>
   );

@@ -1,7 +1,20 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { useSyncExternalStore } from "react";
+import {
+  hasOfficerTokenSnapshot,
+  subscribeOfficerToken,
+} from "@/features/auth/authToken";
 
 export default function Navbar() {
+  const hasOfficerSession = useSyncExternalStore(
+    subscribeOfficerToken,
+    hasOfficerTokenSnapshot,
+    () => false
+  );
+
   return (
     <header className="sticky top-0 z-[1200] hidden w-full border-b border-gray-200 bg-white md:block">
       <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between px-4 md:px-8">
@@ -23,20 +36,20 @@ export default function Navbar() {
             Beranda
           </Link>
 
+          <Link href="/peta" className="text-sm text-gray-600 hover:text-green-700">
+            Peta
+          </Link>
+
           <Link href="/lapor" className="text-sm text-gray-600 hover:text-green-700">
             Lapor Gejala
           </Link>
-
-          <a href="#tentang" className="text-sm text-gray-600 hover:text-green-700">
-            Tentang
-          </a>
         </nav>
 
         <Link
-          href="/login"
+          href={hasOfficerSession ? "/dashboard/profile" : "/login"}
           className="rounded-lg border border-green-700 px-4 py-2 text-sm font-semibold text-green-700 transition hover:bg-green-50"
         >
-          Login Petugas
+          {hasOfficerSession ? "Akun Petugas" : "Login Petugas"}
         </Link>
       </div>
     </header>

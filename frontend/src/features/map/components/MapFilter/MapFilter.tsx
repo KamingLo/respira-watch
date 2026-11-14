@@ -1,5 +1,7 @@
 "use client";
 
+import { Check } from "lucide-react";
+
 interface MapFilterProps {
   selectedCategories: string[];
   onChange: (categories: string[]) => void;
@@ -28,7 +30,7 @@ export default function MapFilter({
         type="button"
         aria-pressed={allSelected}
         onClick={() => onChange(categories)}
-        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+        className={`min-h-11 rounded-full border px-4 py-2 text-sm font-semibold transition ${
           allSelected
             ? "border-green-800 bg-green-800 text-white"
             : "border-green-800 text-green-800 hover:bg-green-50"
@@ -38,6 +40,9 @@ export default function MapFilter({
       </button>
       {categories.map((category) => {
         const selected = selectedCategories.includes(category);
+        const selectedClass = allSelected
+          ? "border-[#B5D2C3] bg-[#EAF5EE] text-green-800"
+          : "border-green-800 bg-green-800 text-white";
 
         return (
           <button
@@ -45,12 +50,13 @@ export default function MapFilter({
             type="button"
             aria-pressed={selected}
             onClick={() => toggleCategory(category)}
-            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+            className={`inline-flex min-h-11 items-center gap-1 rounded-full border px-4 py-2 text-sm font-semibold transition ${
               selected
-                ? "border-green-800 bg-green-800 text-white"
+                ? selectedClass
                 : "border-green-800 text-green-800 hover:bg-green-50"
             }`}
           >
+            {selected && <Check aria-hidden="true" size={14} />}
             {category}
           </button>
         );

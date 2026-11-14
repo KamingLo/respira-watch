@@ -1,6 +1,6 @@
 export type ClusterCategory = "ispa" | "diare";
 export type ClusterRiskStatus = "Waspada" | "Siaga" | "Prioritas";
-export type ClusterStatus = "active" | "monitoring" | "resolved";
+export type ClusterStatus = "active" | "monitoring" | "verified" | "resolved";
 
 export interface ClusterLocation {
   _id?: string;

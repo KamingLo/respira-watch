@@ -76,4 +76,33 @@ export interface PublicMapResponse {
 export interface MapFilterParams {
   category?: string;
   severity?: string;
+  kelurahanId?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface AqiMapItem {
+  gridId: string;
+  cellCode: string;
+  geometry: {
+    type: "Polygon";
+    coordinates: number[][][];
+  };
+  aqi: number;
+  pm25: number;
+  pm10: number;
+  category: string;
+  statusLabel: string;
+  colorHex: string;
+  recordedAt: string;
+  source: string;
+}
+
+export interface AqiMapResponse {
+  success: boolean;
+  message?: string;
+  data: {
+    items: AqiMapItem[];
+    generatedAt: string;
+  };
 }

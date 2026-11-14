@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 
 import { getPublicMap } from "@/services/map.service";
+import { isMapCategorySelected } from "@/features/map/utils/category";
 
 import type {
   MapPoint,
+  MapFilterParams,
   PublicMapData,
 } from "@/types/map.types";
 
@@ -34,9 +36,12 @@ const EMPTY_MAP_DATA: PublicMapData = {
     generatedAt: "",
   },
 };
+const EMPTY_MAP_FILTERS: MapFilterParams = {};
 
-const requestMapData = async (): Promise<PublicMapData> => {
-  const response = await getPublicMap();
+const requestMapData = async (
+  filters: MapFilterParams
+): Promise<PublicMapData> => {
+  const response = await getPublicMap(filters);
 
   if (!response.success) {
     throw new Error("Gagal mengambil data peta.");
@@ -57,7 +62,13 @@ const getMapErrorMessage = (error: unknown): string => {
     : "Terjadi kesalahan saat mengambil data peta.";
 };
 
-export default function useMap() {
+export default function useMap(
+  filters: MapFilterParams = EMPTY_MAP_FILTERS
+) {
+  const stableFilters = useMemo(
+    () => ({ ...filters }),
+    [filters]
+  );
   const refreshInProgress = useRef(false);
   const [selectedCategories, setSelectedCategories] =
     useState<string[]>(["ISPA", "Diare"]);
@@ -71,7 +82,7 @@ export default function useMap() {
   useEffect(() => {
     let active = true;
 
-    requestMapData()
+    requestMapData(stableFilters)
       .then((data) => {
         if (!active) return;
         setMapData(data);
@@ -87,7 +98,7 @@ export default function useMap() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [stableFilters]);
 
   const refreshMapData = useCallback(async (showLoading: boolean) => {
     if (refreshInProgress.current) return;
@@ -97,14 +108,14 @@ export default function useMap() {
     setError(null);
 
     try {
-      setMapData(await requestMapData());
+      setMapData(await requestMapData(stableFilters));
     } catch (error: unknown) {
       setError(getMapErrorMessage(error));
     } finally {
       refreshInProgress.current = false;
       if (showLoading) setLoading(false);
     }
-  }, []);
+  }, [stableFilters]);
 
   const refetch = useCallback(
     () => refreshMapData(true),
@@ -131,9 +142,16 @@ export default function useMap() {
 
   const filteredPoints = useMemo(() => {
     return mapData.points.filter((point: MapPoint) =>
-      selectedCategories.includes(point.category.toUpperCase())
+      isMapCategorySelected(point.category, selectedCategories)
     );
   }, [mapData.points, selectedCategories]);
+  const filteredHeatmap = useMemo(
+    () =>
+      mapData.heatmap.filter((point) =>
+        isMapCategorySelected(point.category, selectedCategories)
+      ),
+    [mapData.heatmap, selectedCategories]
+  );
 
   return {
     selectedCategories,
@@ -141,6 +159,7 @@ export default function useMap() {
 
     mapData,
     points: filteredPoints,
+    heatmap: filteredHeatmap,
     summary: mapData.summary,
 
     loading,

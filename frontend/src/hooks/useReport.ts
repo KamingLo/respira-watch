@@ -34,7 +34,7 @@ export default function useReport() {
 
   const submitReport = async (
     reportData: Omit<ReportPayload, "deviceHash">
-  ): Promise<boolean> => {
+  ): Promise<CreatedReport | null> => {
     try {
       setLoading(true);
       setError(null);
@@ -44,7 +44,6 @@ export default function useReport() {
       const payload: ReportPayload = {
         ...reportData,
         deviceHash,
-        sickCount: 1,
       };
 
       const response = await createReport(payload);
@@ -54,7 +53,7 @@ export default function useReport() {
       }
 
       setSubmittedReport(response.data);
-      return true;
+      return response.data;
     } catch (err: unknown) {
       let message = "Terjadi kesalahan saat mengirim laporan.";
 
@@ -68,7 +67,7 @@ export default function useReport() {
       }
 
       setError(message);
-      return false;
+      return null;
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -23,7 +23,9 @@ import {
   symptomCategoryIcons,
   type SymptomCategory,
 } from "@/features/report/symptoms";
+import { getAgeGroupForAge } from "@/features/report/utils/ageGroup";
 import { classifyComplaint } from "@/services/ai.service";
+import { getPublicKelurahans, type PublicKelurahan } from "@/services/kelurahan.service";
 
 import type {
   ReportSeverity,
@@ -107,6 +109,8 @@ export default function ReportForm() {
   const [severity, setSeverity] = useState<ReportSeverity>("ringan");
 
   const [location, setLocation] = useState<ReportLocation | null>(null);
+  const [kelurahans, setKelurahans] = useState<PublicKelurahan[]>([]);
+  const [kelurahanError, setKelurahanError] = useState("");
   const [showLocationPicker, setShowLocationPicker] = useState(false);
 
   const [description, setDescription] = useState("");
@@ -116,6 +120,27 @@ export default function ReportForm() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiSuggestion, setAiSuggestion] = useState<AiSuggestion | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getPublicKelurahans()
+      .then((data) => {
+        if (active) setKelurahans(data);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setKelurahanError(
+            error instanceof Error
+              ? error.message
+              : "Pilihan kelurahan belum dapat dimuat."
+          );
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const toggleSymptom = (symptom: string) => {
     setAiSuggestion(null);
@@ -289,8 +314,10 @@ export default function ReportForm() {
       selectedSymptoms,
       sickCount: 1,
       age: parsedAge,
+      ageGroups: [getAgeGroupForAge(parsedAge)],
       severity,
       location: location.address,
+      ...(location.kelurahanId ? { kelurahanId: location.kelurahanId } : {}),
       geom: {
         type: "Point" as const,
         coordinates: location.coordinates,
@@ -383,14 +410,13 @@ export default function ReportForm() {
                 Diare
               </button>
 
-              {/* Usia pasien */}
               <div className="flex min-w-0 items-center gap-2 rounded-xl border border-[#B5D2C3] bg-[#EDF2EE] px-3 py-2.5">
                 <Users size={18} className="shrink-0 text-green-800" />
 
                 <div className="min-w-0 flex-1">
                   <label
                     htmlFor="patient-age"
-                    className="block text-[10px] font-semibold text-gray-500"
+                    className="block text-xs font-semibold text-gray-600"
                   >
                     Usia pasien
                   </label>
@@ -407,7 +433,7 @@ export default function ReportForm() {
                         setAiSuggestion(null);
                       }}
                       placeholder="Usia"
-                      className="w-full min-w-0 bg-transparent text-xs font-bold text-[#123D2B] outline-none placeholder:text-gray-400"
+                      className="h-8 w-full min-w-0 bg-transparent text-base font-bold text-[#123D2B] outline-none placeholder:text-gray-400"
                     />
                     <span className="text-[10px] font-semibold text-[#123D2B]">
                       thn
@@ -464,6 +490,42 @@ export default function ReportForm() {
                 value={location}
                 onChange={setLocation}
               />
+
+              <label
+                htmlFor="report-kelurahan"
+                className="mt-4 block text-sm font-bold text-[#123D2B]"
+              >
+                Atau pilih kelurahan
+              </label>
+              <select
+                id="report-kelurahan"
+                value={location?.kelurahanId ?? ""}
+                onChange={(event) => {
+                  const kelurahan = kelurahans.find(
+                    (item) => item.id === event.target.value
+                  );
+                  if (kelurahan) {
+                    setLocation({
+                      address: `${kelurahan.name}, ${kelurahan.kecamatan}`,
+                      coordinates: kelurahan.centroid.coordinates,
+                      kelurahanId: kelurahan.id,
+                    });
+                  }
+                }}
+                className="mt-2 min-h-12 w-full rounded-xl border border-[#B5D2C3] bg-white px-3 text-base text-[#123D2B]"
+              >
+                <option value="">Pilih kelurahan jika GPS tidak tersedia</option>
+                {kelurahans.map((kelurahan) => (
+                  <option key={kelurahan.id} value={kelurahan.id}>
+                    {kelurahan.name} · {kelurahan.kecamatan}
+                  </option>
+                ))}
+              </select>
+              {kelurahanError && (
+                <p role="alert" className="mt-2 text-xs text-red-700">
+                  {kelurahanError}
+                </p>
+              )}
 
               {location && (
                 <p className="mt-3 rounded-lg bg-green-50 p-3 text-xs leading-relaxed text-green-900">

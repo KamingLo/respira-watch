@@ -1,62 +1,27 @@
 import AqiIndicator from "../AqiIndicator/AqiIndicator";
+import type { AqiResult } from "@/types/aqi.types";
 
 interface AqiCardProps {
-  value: number;
-  location: string;
-  subLocation?: string;
+  data: AqiResult | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
 }
 
-const getAqiStatus = (value: number) => {
-  if (value <= 50) {
-    return {
-      label: "Baik",
-      description: "Kualitas udara baik untuk aktivitas luar ruangan.",
-      color: "text-green-100",
-      bg: "bg-green-500",
-    };
-  }
-
-  if (value <= 100) {
-    return {
-      label: "Sedang",
-      description: "Kualitas udara cukup baik untuk sebagian besar orang.",
-      color: "text-yellow-100",
-      bg: "bg-yellow-500",
-    };
-  }
-
-  if (value <= 150) {
-    return {
-      label: "Tidak Sehat",
-      description: "Kelompok sensitif perlu membatasi aktivitas luar ruangan.",
-      color: "text-orange-100",
-      bg: "bg-orange-500",
-    };
-  }
-
-  if (value <= 200) {
-    return {
-      label: "Sangat Tidak Sehat",
-      description: "Kurangi aktivitas di luar ruangan.",
-      color: "text-rose-100",
-      bg: "bg-rose-600",
-    };
-  }
-
-  return {
-    label: "Berbahaya",
-    description: "Hindari aktivitas luar ruangan.",
-    color: "text-purple-100",
-    bg: "bg-purple-600",
-  };
-};
-
 export default function AqiCard({
-  value,
-  location,
-  subLocation,
+  data,
+  loading,
+  error,
+  onRefresh,
 }: AqiCardProps) {
-  const status = getAqiStatus(value);
+  const location = data?.kelurahan?.name ?? data?.cellCode ?? "Kualitas Udara Sekitar";
+  const value = data?.weatherAqi.aqi;
+  const recordedAt = data?.weatherAqi.recordedAt
+    ? new Intl.DateTimeFormat("id-ID", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(data.weatherAqi.recordedAt))
+    : null;
 
   return (
     <section className="w-full overflow-hidden rounded-2xl bg-gradient-to-br from-[#047857] to-[#064E3B] p-5 text-white shadow-md">
@@ -67,12 +32,9 @@ export default function AqiCard({
           <h2 className="mt-1 text-lg font-bold">
             {location}
           </h2>
-
-          {subLocation && (
-            <p className="mt-1 text-xs text-green-100">
-              {subLocation}
-            </p>
-          )}
+          <p className="mt-1 text-xs text-green-100">
+            {data?.kelurahan?.kecamatan ?? "Lokasi terdekat"}
+          </p>
         </div>
 
         <div className="rounded-xl bg-white/15 p-2">
@@ -84,28 +46,55 @@ export default function AqiCard({
       <div className="mt-6 flex items-end gap-3">
         <div>
           <p className="text-xs font-medium text-green-100">
-            Air Quality Index
+            Indeks Kualitas Udara
           </p>
 
           <p className="mt-1 text-5xl font-bold tracking-tight">
-            {value}
+            {loading && value === undefined ? "…" : value ?? "—"}
           </p>
         </div>
 
-        <span className={`mb-1 rounded-full ${status.bg} px-3 py-1 text-xs font-bold text-white`}>
-          {status.label}
-        </span>
+        {data && (
+          <span className="mb-1 rounded-full px-3 py-1 text-xs font-bold text-white" style={{ backgroundColor: data.areaStatus.colorHex }}>
+            {data.areaStatus.statusLabel}
+          </span>
+        )}
       </div>
 
       {/* AQI Indicator */}
-      <div className="mt-5">
+      {value !== undefined && (
+        <div className="mt-5">
         <AqiIndicator value={value} />
-      </div>
+        </div>
+      )}
 
       {/* Description */}
-      <p className={`mt-4 text-sm leading-relaxed ${status.color}`}>
-        {status.description}
-      </p>
+      {data ? (
+        <>
+          <p className="mt-4 text-sm leading-relaxed text-green-50">
+            PM2.5 {data.weatherAqi.pm25} · PM10 {data.weatherAqi.pm10}
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-green-50">
+            {data.areaStatus.healthRecommendation}
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-green-100">
+            {recordedAt ? `Data diperbarui ${recordedAt}` : ""}
+          </p>
+        </>
+      ) : (
+        <p className="mt-4 text-sm leading-relaxed text-green-50">
+          {error ?? "Gunakan lokasi perangkat untuk melihat kualitas udara terdekat."}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={loading}
+        className="mt-4 rounded-full border border-white/60 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-70"
+      >
+        {loading ? "Memuat data AQI..." : data ? "Perbarui AQI" : "Gunakan lokasi saya"}
+      </button>
 
     </section>
   );

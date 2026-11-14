@@ -1,189 +1,226 @@
 "use client";
 
-import {
-  AlertTriangle,
-  MapPin,
-  Wind,
-  Thermometer,
-  Stethoscope,
-  Plus,
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { AlertTriangle, MapPin, Wind, Users } from "lucide-react";
 
 import Button from "@/components/ui/Button/Button";
+import { getAqiByCoordinates } from "@/services/aqi.service";
+import type { AqiResult } from "@/types/aqi.types";
+import type { ReportAgeGroup, ReportSeverity } from "@/types/report.types";
+
+interface SubmittedReport {
+  category: "ispa" | "diare";
+  selectedSymptoms: string[];
+  sickCount: number;
+  age: number;
+  ageGroups: ReportAgeGroup[];
+  severity: ReportSeverity;
+  isUpdated?: boolean;
+  location: string;
+  geom: {
+    coordinates: [number, number];
+  };
+  description: string;
+}
 
 export default function ReportSuccessPage() {
+  const [report, setReport] = useState<SubmittedReport | null>(null);
+  const [aqiData, setAqiData] = useState<AqiResult | null>(null);
+  const [aqiLoading, setAqiLoading] = useState(true);
+  const [aqiError, setAqiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => {
+      if (!active) return;
+      const storedReport = sessionStorage.getItem("respirawatch-report-result");
+      if (!storedReport) {
+        setAqiLoading(false);
+        setAqiError(
+          "Detail laporan tidak tersedia. Laporan tetap dapat dilihat petugas."
+        );
+        return;
+      }
+
+      let savedReport: SubmittedReport;
+      try {
+        savedReport = JSON.parse(storedReport) as SubmittedReport;
+      } catch {
+        setAqiLoading(false);
+        setAqiError("Detail laporan tidak dapat dibaca.");
+        return;
+      }
+
+      setReport(savedReport);
+      const [lng, lat] = savedReport.geom.coordinates;
+      getAqiByCoordinates(lat, lng)
+        .then((data) => {
+          if (active) setAqiData(data);
+        })
+        .catch((error: unknown) => {
+          if (active) {
+            setAqiError(
+              error instanceof Error
+                ? error.message
+                : "AQI sekitar belum tersedia."
+            );
+          }
+        })
+        .finally(() => {
+          if (active) setAqiLoading(false);
+        });
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const severeSymptoms =
+    report?.severity === "berat" ||
+    report?.severity === "kritis" ||
+    report?.selectedSymptoms.some((symptom) =>
+      /sesak|dehidras/i.test(symptom)
+    ) ||
+    (report?.category === "diare" &&
+      /(?:[4-9]|\d{2,})\s*hari/i.test(report.description));
+
   const handleFindHospital = () => {
+    if (!report) return;
+    const [lng, lat] = report.geom.coordinates;
     window.open(
-      "https://www.google.com/maps/search/?api=1&query=Puskesmas+Kelayan+Timur",
+      `https://www.google.com/maps/search/?api=1&query=Puskesmas+near+${lat},${lng}`,
       "_blank",
       "noopener,noreferrer"
     );
   };
 
   return (
-    <main className="min-h-screen bg-[#EDF2EE] px-4 pb-32 pt-5">
+    <main className="min-h-screen bg-[#EDF2EE] px-4 pb-[20rem] pt-5 md:pb-48">
       <div className="mx-auto max-w-[520px] space-y-4">
-
-        {/* Status Laporan dan AQI */}
         <section className="relative overflow-hidden rounded-[26px] bg-gradient-to-br from-[#078B50] via-[#006B3C] to-[#003D28] p-5 text-white shadow-lg shadow-green-900/20">
-
           <div className="flex items-start justify-between gap-2">
             <div>
               <h1 className="text-lg font-bold">
-                Laporan Terkirim
+                {report?.isUpdated ? "Laporan Diperbarui" : "Laporan Terkirim"}
               </h1>
               <p className="mt-1 text-xs text-green-100">
-                RW 04 • Bukan alat diagnosis
+                {report
+                  ? report.isUpdated
+                    ? "Laporan perangkat ini diperbarui, jadi jumlah laporan tidak bertambah."
+                    : `${report.location} · ${report.sickCount} orang terdampak`
+                  : "Bukan alat diagnosis"}
               </p>
             </div>
-
-            <div className="flex shrink-0 items-center gap-1.5 rounded-full border-2 border-white bg-[#FFB900] px-3 py-2 text-[#173B2B] shadow-md">
-              <AlertTriangle size={17} />
+            <div className="flex max-w-[55%] items-center gap-1.5 rounded-full border-2 border-white bg-[#FFB900] px-3 py-2 text-[#173B2B] shadow-md">
+              <AlertTriangle size={17} className="shrink-0" />
               <span className="text-xs font-bold">
-                Waspada
+                {aqiData?.areaStatus.statusLabel ?? "Area dipantau"}
               </span>
             </div>
           </div>
 
-          {/* AQI */}
           <div className="mt-5 flex items-center gap-3">
             <span className="text-[48px] font-bold leading-none tracking-tight">
-              118
+              {aqiLoading ? "…" : aqiData?.weatherAqi.aqi ?? "—"}
             </span>
-
             <div>
               <p className="text-sm font-bold">
-                Udara Tidak Sehat
+                {aqiData?.areaStatus.statusLabel ??
+                  (aqiError ? "AQI belum tersedia" : "Memuat kualitas udara")}
               </p>
               <p className="mt-1 text-xs text-green-100">
                 Indeks Kualitas Udara (AQI)
               </p>
             </div>
           </div>
-
-          {/* AQI Indicator */}
-          <div className="mt-4 flex h-6 items-center gap-1 rounded-full bg-white p-1.5">
-            <div className="h-full flex-1 rounded-full bg-[#05B878]" />
-            <div className="h-full flex-1 rounded-full bg-[#FFB900]" />
-            <div className="h-full flex-1 rounded-full border-2 border-[#003D28] bg-[#FF7417]" />
-            <div className="h-full flex-1 rounded-full bg-[#E91E50]" />
-            <div className="h-full flex-1 rounded-full bg-[#C69AD0]" />
-          </div>
+          {aqiData && (
+            <div
+              className="mt-4 rounded-full px-3 py-2 text-xs font-semibold text-white"
+              style={{ backgroundColor: aqiData.areaStatus.colorHex }}
+            >
+              PM2.5 {aqiData.weatherAqi.pm25} · PM10 {aqiData.weatherAqi.pm10}
+            </div>
+          )}
+          {aqiError && (
+            <p role="status" className="mt-3 text-xs text-green-100">
+              {aqiError}
+            </p>
+          )}
         </section>
 
-        {/* Saran Kesehatan */}
         <section className="rounded-[22px] border border-[#B9D9C8] bg-white p-5 shadow-md shadow-green-900/5">
-
           <h2 className="mb-4 text-base font-bold text-[#183D2D]">
-            3 Saran Hari Ini
+            Saran untuk laporan ini
           </h2>
-
           <div className="space-y-3">
-            {/* Saran 1 */}
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#148650] bg-[#D9F1E4] text-[#087544]">
                 <Wind size={23} />
               </div>
-
               <p className="text-sm leading-relaxed text-[#29483A]">
-                Pakai masker saat beraktivitas di luar
+                {aqiData?.areaStatus.healthRecommendation ??
+                  "Pantau kondisi dan hubungi tenaga kesehatan jika gejala memburuk."}
               </p>
             </div>
-
-            {/* Saran 2 */}
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#148650] bg-[#D9F1E4] text-[#087544]">
-                <Thermometer size={23} />
+                <Users size={23} />
               </div>
-
               <p className="text-sm leading-relaxed text-[#29483A]">
-                Beri anak air hangat & istirahat cukup
+                Gejala: {report?.selectedSymptoms.join(", ") ?? "belum tersedia"}.
+                Kelompok usia pasien: {report?.ageGroups[0] ?? "belum tersedia"}.
               </p>
             </div>
-
-            {/* Saran 3 */}
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#148650] bg-[#D9F1E4] text-[#087544]">
-                <Stethoscope size={23} />
-              </div>
-
-              <p className="text-sm font-semibold leading-relaxed text-[#29483A]">
-                Segera ke Puskesmas bila napas cepat
+            {aqiData?.areaStatus.sensitiveGroupWarning && (
+              <p className="rounded-xl bg-[#E5F1E9] p-3 text-sm leading-relaxed text-[#29483A]">
+                {aqiData.areaStatus.sensitiveGroupWarning}
               </p>
-            </div>
+            )}
           </div>
         </section>
 
-        {/* Rekomendasi Puskesmas */}
-        <section className="overflow-hidden rounded-[22px] border border-[#B9D9C8] bg-white p-4 shadow-md shadow-green-900/5">
-
-          {/* Ilustrasi Puskesmas */}
-          <div className="relative flex h-[112px] items-end justify-center overflow-hidden rounded-[15px] border border-[#B9D9C8] bg-[#E0F1E8]">
-
-            {/* Background landscape */}
-            <div className="absolute -bottom-9 left-[-15px] h-16 w-[115%] rounded-[50%] bg-[#C7E7D6]" />
-
-            {/* Pohon kiri */}
-            <div className="absolute bottom-5 left-[18%] h-6 w-6 rounded-full bg-[#7BC69F]" />
-
-            {/* Pohon kanan */}
-            <div className="absolute bottom-5 right-[18%] h-6 w-6 rounded-full bg-[#7BC69F]" />
-
-            {/* Gedung Puskesmas */}
-            <div className="relative z-10 mb-2 flex h-[65px] w-24 flex-col items-center rounded-t-md bg-white shadow-sm">
-
-              {/* Atap */}
-              <div className="absolute -top-1 h-2 w-[112%] rounded-full bg-[#006B3C]" />
-
-              {/* Jendela dan pintu */}
-              <div className="mt-4 flex w-full items-center justify-around px-2">
-                <div className="h-4 w-4 rounded-sm bg-[#C5EBD7]" />
-
-                <div className="flex flex-col items-center">
-                  <Plus size={20} strokeWidth={2.5} className="text-[#174B35]" />
-                </div>
-
-                <div className="h-4 w-4 rounded-sm bg-[#C5EBD7]" />
-              </div>
-
-              <div className="mt-1 h-8 w-7 rounded-t-sm bg-[#C5EBD7]" />
-            </div>
-          </div>
-
-          {/* Informasi Puskesmas */}
-          <div className="mt-3">
+        {report && (
+          <section className="rounded-[22px] border border-[#B9D9C8] bg-white p-4 shadow-sm">
             <h2 className="text-base font-bold text-[#183D2D]">
-              Puskesmas Kelayan Timur
+              Ringkasan laporan
             </h2>
+            <p className="mt-2 text-sm text-[#29483A]">
+              {report.category.toUpperCase()} · usia {report.age} tahun ·{" "}
+              {report.sickCount} penderita
+            </p>
+            <p className="mt-1 text-sm text-[#61776A]">
+              Status laporan: menunggu verifikasi petugas.
+            </p>
+          </section>
+        )}
 
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[#61776A]">
-              <span>1.2 km</span>
-              <span>•</span>
-              <span>Buka 24 Jam (UGD)</span>
-            </div>
-          </div>
-        </section>
-
-        {/* Disclaimer */}
         <p className="px-3 text-center text-[11px] leading-relaxed text-[#718579]">
-          Informasi AQI dan saran kesehatan merupakan informasi awal,
-          bukan diagnosis medis. Hubungi tenaga kesehatan untuk
-          pemeriksaan lebih lanjut.
+          RespiraWatch bukan alat diagnosis. Informasi AQI dan saran kesehatan
+          merupakan sinyal awal, bukan pengganti pemeriksaan tenaga kesehatan.
         </p>
       </div>
 
-      {/* Fixed Bottom Button */}
-      <div className="fixed bottom-0 left-0 z-[1000] w-full bg-gradient-to-t from-[#EDF2EE] via-[#EDF2EE] to-transparent px-4 pb-5 pt-8">
+      <div className="fixed bottom-24 left-0 z-[1000] w-full bg-gradient-to-t from-[#EDF2EE] via-[#EDF2EE] to-transparent px-4 pb-5 pt-8 md:bottom-0">
         <div className="mx-auto max-w-[520px]">
-          <Button
-            fullWidth
-            size="large"
-            onClick={handleFindHospital}
-            className="!rounded-full !bg-gradient-to-r !from-[#078B50] !to-[#003D28] !py-4 !text-base !font-bold !text-white shadow-lg shadow-green-900/20 hover:!shadow-xl"
+          {severeSymptoms && (
+            <Button
+              fullWidth
+              size="large"
+              onClick={handleFindHospital}
+              className="!rounded-full !bg-gradient-to-r !from-[#078B50] !to-[#003D28] !py-4 !text-base !font-bold !text-white shadow-lg shadow-green-900/20 hover:!shadow-xl"
+            >
+              <MapPin size={20} />
+              Cari Puskesmas Terdekat
+            </Button>
+          )}
+          <Link
+            href="/"
+            className="mt-2 flex min-h-12 w-full items-center justify-center rounded-full border border-[#087546] bg-white px-4 py-3 text-sm font-bold text-[#164A32]"
           >
-            <MapPin size={20} />
-            Cari Puskesmas Terdekat
-          </Button>
+            Kembali ke beranda
+          </Link>
         </div>
       </div>
     </main>

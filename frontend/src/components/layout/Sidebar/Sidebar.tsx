@@ -18,17 +18,17 @@ const menuItems = [
   },
   {
     label: "Daftar Laporan",
-    href: "/dashboard#clusters",
+    href: "/dashboard/reports",
     icon: ClipboardList,
   },
   {
     label: "Tren Kualitas Udara",
-    href: "/dashboard#trend",
+    href: "/dashboard/trends",
     icon: Wind,
   },
   {
     label: "Akun Petugas",
-    href: "/login",
+    href: "/dashboard/profile",
     icon: UserRound,
   },
 ];
@@ -65,7 +65,12 @@ export default function Sidebar({
       <nav aria-label="Navigasi dashboard" className="space-y-1.5">
         {menuItems.map((item, index) => {
           const Icon = item.icon;
-          const active = pathname === "/dashboard" && index === 0;
+          const route = item.href.split("#")[0];
+          const active =
+            (index === 0 &&
+              (pathname === "/dashboard" ||
+                pathname.startsWith("/dashboard/clusters/"))) ||
+            pathname === route;
 
           return (
             <Link
@@ -85,15 +90,17 @@ export default function Sidebar({
         })}
       </nav>
 
-      <section
-        id="sidebar-clusters"
-        className="mt-auto rounded-2xl bg-[#F7F6F0] p-3"
-      >
-        <h2 className="mb-2 text-[11px] font-bold text-[#264536]">
-          Klaster Aktif (72 Jam)
-        </h2>
-        <div className="space-y-2">{children}</div>
-      </section>
+      {children && (
+        <section
+          id="sidebar-clusters"
+          className="mt-auto rounded-2xl bg-[#F7F6F0] p-3"
+        >
+          <h2 className="mb-2 text-[11px] font-bold text-[#264536]">
+            Klaster Aktif (72 Jam)
+          </h2>
+          <div className="space-y-2">{children}</div>
+        </section>
+      )}
     </aside>
   );
 }

@@ -11,19 +11,19 @@ import {
 
 const navigationItems = [
   {
-    label: "Peta",
+    label: "Beranda",
     href: "/",
+    icon: House,
+  },
+  {
+    label: "Peta",
+    href: "/peta",
     icon: MapPin,
   },
   {
     label: "Laporan",
     href: "/lapor",
     icon: FileText,
-  },
-  {
-    label: "Beranda",
-    href: "/",
-    icon: House,
   },
   {
     label: "Profil",
@@ -42,12 +42,10 @@ export default function BottomNavigation() {
 
         {navigationItems.map((item) => {
           const Icon = item.icon;
-
           const active =
-            item.label === "Peta"
+            item.href === "/"
               ? pathname === "/"
-              : item.label !== "Beranda" &&
-                pathname === item.href;
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
           return (
             <Link

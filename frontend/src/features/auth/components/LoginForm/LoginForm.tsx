@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import Button from "@/components/ui/Button/Button";
 import Input from "@/components/ui/Input/Input";
 import Card from "@/components/ui/Card/Card";
 import useAuth from "@/features/auth/hooks/useAuth";
+import { getOfficerToken } from "@/features/auth/authToken";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -23,6 +24,12 @@ export default function LoginForm() {
   const [password, setPassword] = useState("");
 
   const [showError, setShowError] = useState("");
+
+  useEffect(() => {
+    if (getOfficerToken()) {
+      router.replace("/dashboard/profile");
+    }
+  }, [router]);
 
   const handleSubmit = async (
     event: React.FormEvent<HTMLFormElement>
@@ -45,8 +52,8 @@ export default function LoginForm() {
   };
 
   return (
-    <main className="min-h-screen bg-[#edf4ef] px-5 py-5">
-      <div className="mx-auto flex min-h-[calc(100svh-2.5rem)] w-full max-w-[390px] flex-col">
+    <main className="min-h-screen bg-[#edf4ef] px-5 py-5 pb-28 md:min-h-[calc(100svh-4rem)] md:pb-5">
+      <div className="mx-auto flex min-h-[calc(100svh-2.5rem)] w-full max-w-[390px] flex-col md:min-h-[calc(100svh-6.5rem)]">
 
         {/* Header */}
         <header className="mb-5 flex items-center justify-between">

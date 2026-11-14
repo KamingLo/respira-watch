@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { MapPin, Search, Loader2, X } from "lucide-react";
+import { MapPin, Search, Loader2, X, LocateFixed } from "lucide-react";
 
 import type { ReportLocation } from "@/types/report.types";
 
@@ -43,28 +43,62 @@ export default function ReportLocationPicker({
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
+  const [gettingLocation, setGettingLocation] = useState(false);
+
+  const handleUseCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setSearchError("Browser ini tidak mendukung akses lokasi.");
+      return;
+    }
+
+    setGettingLocation(true);
+    setSearchError("");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        void reverseGeocode(coords.latitude, coords.longitude).finally(() =>
+          setGettingLocation(false)
+        );
+      },
+      (error) => {
+        setGettingLocation(false);
+        setSearchError(
+          error.code === error.PERMISSION_DENIED
+            ? "Izin lokasi ditolak. Pilih kelurahan atau cari alamat secara manual."
+            : "Lokasi belum bisa didapatkan. Pilih kelurahan atau coba lagi."
+        );
+      },
+      { enableHighAccuracy: false, timeout: 10_000 }
+    );
+  };
 
   const position: [number, number] = value
     ? [value.coordinates[1], value.coordinates[0]]
     : DEFAULT_POSITION;
 
-  // Sinkronisasi jika nilai lokasi berubah dari parent
   useEffect(() => {
-    setQuery(value?.address ?? "");
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) setQuery(value?.address ?? "");
+    });
+
+    return () => {
+      active = false;
+    };
   }, [value?.address]);
 
   // Pencarian alamat dengan debounce
   useEffect(() => {
-    if (query.trim().length < 3) {
-      setResults([]);
-      setSearching(false);
-      setSearchError("");
-      return;
-    }
-
+    const shouldSearch = query.trim().length >= 3;
     const controller = new AbortController();
 
     const timeout = setTimeout(async () => {
+      if (!shouldSearch) {
+        setResults([]);
+        setSearching(false);
+        setSearchError("");
+        return;
+      }
+
       try {
         setSearching(true);
         setSearchError("");
@@ -106,7 +140,7 @@ export default function ReportLocationPicker({
           setSearching(false);
         }
       }
-    }, 800);
+    }, shouldSearch ? 800 : 0);
 
     return () => {
       clearTimeout(timeout);
@@ -204,6 +238,20 @@ export default function ReportLocationPicker({
           Cari alamat atau tentukan lokasi langsung pada peta.
         </p>
       </div>
+
+      <button
+        type="button"
+        onClick={handleUseCurrentLocation}
+        disabled={gettingLocation}
+        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#087546] bg-white px-4 py-2 text-sm font-semibold text-[#164A32] disabled:opacity-70"
+      >
+        {gettingLocation ? (
+          <Loader2 size={18} className="animate-spin" />
+        ) : (
+          <LocateFixed size={18} />
+        )}
+        {gettingLocation ? "Mengambil lokasi..." : "Gunakan lokasi GPS"}
+      </button>
 
       {/* Address Search */}
       <div className="relative">

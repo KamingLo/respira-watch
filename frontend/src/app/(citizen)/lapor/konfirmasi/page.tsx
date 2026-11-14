@@ -12,10 +12,12 @@ import {
 import Button from "@/components/ui/Button/Button";
 import Card from "@/components/ui/Card/Card";
 import { symptoms, type SymptomCategory } from "@/features/report/symptoms";
+import { getAgeGroupForAge } from "@/features/report/utils/ageGroup";
 import useReport from "@/hooks/useReport";
 import type {
   GeoPoint,
   ReportCategory,
+  ReportAgeGroup,
   ReportSeverity,
 } from "@/types/report.types";
 
@@ -23,9 +25,12 @@ interface ReportData {
   category: SymptomCategory;
   selectedSymptoms: string[];
   description: string;
+  sickCount: number;
   age: number;
+  ageGroups: ReportAgeGroup[];
   severity: ReportSeverity;
   location: string;
+  kelurahanId?: string;
   geom: GeoPoint;
 }
 
@@ -53,10 +58,15 @@ export default function ConfirmReportPage() {
 
     try {
       const parsedReport = JSON.parse(savedReport) as ReportData;
+      const normalizedReport = {
+        ...parsedReport,
+        sickCount: 1,
+        ageGroups: [getAgeGroupForAge(parsedReport.age)],
+      };
 
       startTransition(() => {
-        setReport(parsedReport);
-        setSelectedSymptoms(parsedReport.selectedSymptoms || []);
+        setReport(normalizedReport);
+        setSelectedSymptoms(normalizedReport.selectedSymptoms || []);
         setLoading(false);
       });
     } catch {
@@ -78,19 +88,30 @@ export default function ConfirmReportPage() {
 
     const category: ReportCategory =
       report.category === "ISPA" ? "ispa" : "diare";
-    const submitted = await submitReport({
+    const submittedReport = await submitReport({
       category,
       symptoms: selectedSymptoms,
       sickCount: 1,
       age: report.age,
+      ageGroups: report.ageGroups,
       severity: report.severity,
       description: report.description,
       address: report.location,
       geom: report.geom,
+      ...(report.kelurahanId ? { kelurahanId: report.kelurahanId } : {}),
     });
 
-    if (!submitted) return;
+    if (!submittedReport) return;
 
+    sessionStorage.setItem(
+      "respirawatch-report-result",
+      JSON.stringify({
+        ...report,
+        selectedSymptoms,
+        category,
+        isUpdated: submittedReport.isUpdated,
+      })
+    );
     sessionStorage.removeItem("respirawatch-report");
     router.push("/lapor/konfirmasi/berhasil");
   };
@@ -142,13 +163,18 @@ export default function ConfirmReportPage() {
               </h2>
 
               <p className="mt-1 text-xs text-[#315344]">
-                {report.category} • {report.age} thn • {report.location}
+                {report.category} • 1 orang • {report.age} thn
+                {" · "}
+                {report.location}
               </p>
             </div>
           </div>
 
           <p className="text-sm leading-relaxed text-[#123D2B]">
             “{report.description}”
+          </p>
+          <p className="mt-2 text-xs text-[#315344]">
+            Kelompok usia pasien: {report.ageGroups[0]}
           </p>
         </Card>
 
