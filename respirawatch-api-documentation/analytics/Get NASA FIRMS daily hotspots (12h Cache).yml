@@ -1,0 +1,29 @@
+info:
+  name: Get NASA FIRMS daily hotspots (12h Cache)
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: http://localhost:4000/api/analytics/hotspots?bbox=95,-11,141,6&days=1
+  params:
+    - name: bbox
+      value: 95,-11,141,6
+      type: query
+    - name: days
+      value: "1"
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # GET /api/analytics/hotspots — Titik Panas Karhutla Harian (NASA FIRMS)
+
+  Menarik data *hotspot* kebakaran hutan dan lahan harian dari satelit **NASA FIRMS (`VIIRS_SNPP_NRT`)**:
+  - **Strict Fetch Timeout (`8000ms`)**: Menggunakan `AbortController` agar server tidak pernah *hang* apabila server NASA lambat merespons.
+  - **Redis Cache TTL 12 Jam (`43200s`)**: Menyimpan hasil GeoJSON hotspot di Redis pada kunci `analytics:firms:hotspots:<source>:<days>d:<bbox>`.

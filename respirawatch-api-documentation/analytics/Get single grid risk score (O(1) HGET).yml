@@ -1,0 +1,24 @@
+info:
+  name: Get single grid risk score (O(1) HGET)
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: http://localhost:4000/api/analytics/risk-scores?cellCode=GRID-JKT-01
+  params:
+    - name: cellCode
+      value: GRID-JKT-01
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # GET /api/analytics/risk-scores?cellCode=... — Skor Risiko 1 Sel Grid via Redis HGET O(1)
+
+  Membaca skor risiko 1 sel grid secara langsung dari struktur **Redis Hash** (`HGET analytics:risk_map:hash <gridIdOrCellCode>`) dengan kompleksitas waktu **O(1)**.

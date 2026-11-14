@@ -1,0 +1,27 @@
+info:
+  name: Get area risk scores (O(1) Redis)
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://localhost:4000/api/analytics/risk-scores
+  params:
+    - name: refresh
+      value: "false"
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # GET /api/analytics/risk-scores — Peta Skor Risiko Area (O(1) Redis Lookup)
+
+  Mengambil seluruh peta skor risiko area (0–100) per sel grid (`GridCell`) dengan formula:
+  `Skor = round(0.5 * Laporan + 0.3 * AQI + 0.2 * Cuaca)`
+
+  Data dihitung secara batch setiap 1 jam oleh cron (`0 * * * *`) dan disimpan di Redis (`analytics:risk_map:all` & Hash `analytics:risk_map:hash`) untuk performa pembacaan instan **O(1)**.
