@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -11,15 +11,23 @@ import {
 
 import Button from "@/components/ui/Button/Button";
 import Card from "@/components/ui/Card/Card";
+import useReport from "@/hooks/useReport";
+import type {
+  GeoPoint,
+  ReportCategory,
+  ReportSeverity,
+} from "@/types/report.types";
 
-type Category = "ISPA" | "Diare";
+type FormCategory = "ISPA" | "Diare";
 
 interface ReportData {
-  category: Category;
+  category: FormCategory;
   selectedSymptoms: string[];
   description: string;
-  ageGroup?: string;
-  location?: string;
+  age: number;
+  severity: ReportSeverity;
+  location: string;
+  geom: GeoPoint;
 }
 
 interface Symptom {
@@ -27,7 +35,7 @@ interface Symptom {
   icon: string;
 }
 
-const symptoms: Record<Category, Symptom[]> = {
+const symptoms: Record<FormCategory, Symptom[]> = {
   ISPA: [
     { label: "Batuk", icon: "/images/symptoms/batuk.png" },
     { label: "Demam", icon: "/images/symptoms/demam.png" },
@@ -44,6 +52,11 @@ const symptoms: Record<Category, Symptom[]> = {
 
 export default function ConfirmReportPage() {
   const router = useRouter();
+  const {
+    submitReport,
+    loading: submitting,
+    error: submissionError,
+  } = useReport();
 
   const [report, setReport] = useState<ReportData | null>(null);
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
@@ -62,14 +75,15 @@ export default function ConfirmReportPage() {
     try {
       const parsedReport = JSON.parse(savedReport) as ReportData;
 
-      setReport(parsedReport);
-      setSelectedSymptoms(parsedReport.selectedSymptoms || []);
+      startTransition(() => {
+        setReport(parsedReport);
+        setSelectedSymptoms(parsedReport.selectedSymptoms || []);
+        setLoading(false);
+      });
     } catch {
       router.replace("/lapor");
       return;
     }
-
-    setLoading(false);
   }, [router]);
 
   const toggleSymptom = (symptom: string) => {
@@ -80,20 +94,25 @@ export default function ConfirmReportPage() {
     );
   };
 
-  const handleConfirm = () => {
-    if (!report || selectedSymptoms.length === 0) return;
+  const handleConfirm = async () => {
+    if (!report || selectedSymptoms.length === 0 || submitting) return;
 
-    const updatedReport = {
-      ...report,
-      selectedSymptoms,
-      status: "Menunggu verifikasi",
-    };
+    const category: ReportCategory =
+      report.category === "ISPA" ? "ispa" : "diare";
+    const submitted = await submitReport({
+      category,
+      symptoms: selectedSymptoms,
+      sickCount: 1,
+      age: report.age,
+      severity: report.severity,
+      description: report.description,
+      address: report.location,
+      geom: report.geom,
+    });
 
-    sessionStorage.setItem(
-      "respirawatch-report",
-      JSON.stringify(updatedReport)
-    );
+    if (!submitted) return;
 
+    sessionStorage.removeItem("respirawatch-report");
     router.push("/lapor/konfirmasi/berhasil");
   };
 
@@ -144,7 +163,7 @@ export default function ConfirmReportPage() {
               </h2>
 
               <p className="mt-1 text-xs text-[#315344]">
-                {report.category} • {report.ageGroup} • {report.location}
+                {report.category} • {report.age} thn • {report.location}
               </p>
             </div>
           </div>
@@ -226,16 +245,31 @@ export default function ConfirmReportPage() {
           </p>
         </div>
 
+        {submissionError && (
+          <p
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          >
+            Gagal mengirim laporan: {submissionError}
+          </p>
+        )}
+
         {/* Confirmation Button */}
         <Button
           fullWidth
           size="large"
           onClick={handleConfirm}
-          disabled={selectedSymptoms.length === 0}
+          disabled={selectedSymptoms.length === 0 || submitting}
           className="!rounded-full !bg-gradient-to-r !from-green-600 !to-green-950 !py-4 !text-base shadow-lg hover:!shadow-xl"
         >
-          <Check size={20} />
-          Konfirmasi
+          {submitting ? (
+            "Mengirim laporan..."
+          ) : (
+            <>
+              <Check size={20} />
+              Konfirmasi
+            </>
+          )}
         </Button>
 
       </div>

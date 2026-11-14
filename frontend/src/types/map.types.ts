@@ -10,7 +10,12 @@ export interface MapPoint {
     type: "Point";
     coordinates: [number, number];
   };
-  kelurahan: string | null;
+  kelurahan: {
+    id: string;
+    code?: string;
+    name?: string;
+    kecamatan?: string;
+  } | null;
   reportedAt: string;
 }
 

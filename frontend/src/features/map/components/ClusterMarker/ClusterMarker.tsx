@@ -67,7 +67,7 @@ export default function ClusterMarker({
                 </p>
 
                 <p>
-                  Lokasi: {point.kelurahan ?? "Tidak diketahui"}
+                  Lokasi: {point.kelurahan?.name ?? "Tidak diketahui"}
                 </p>
 
                 <p>
