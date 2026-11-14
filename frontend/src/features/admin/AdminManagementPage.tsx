@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,7 +13,6 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-
 import { getOfficerToken } from "@/features/auth/authToken";
 import { getMyProfile } from "@/services/auth.service";
 import {
@@ -35,10 +33,8 @@ import {
   type OfficerRole,
   type UpdateKelurahanPayload,
 } from "@/services/adminManagement.service";
-
 type AccessState = "loading" | "ready" | "forbidden" | "error";
 type Feedback = { type: "success" | "error"; message: string };
-
 interface OfficerFormState {
   id?: string;
   name: string;
@@ -50,7 +46,6 @@ interface OfficerFormState {
   assignedKelurahan: string;
   isActive: boolean;
 }
-
 interface KelurahanFormState {
   id?: string;
   code: string;
@@ -65,14 +60,12 @@ interface KelurahanFormState {
   latitude: string;
   boundaryJson: string;
 }
-
 const fieldClassName =
   "w-full rounded-xl border border-[#D5E2D9] bg-white px-3 py-2.5 text-sm text-[#264536] outline-none focus:border-[#087546] focus:ring-2 focus:ring-[#087546]/10";
 const primaryButtonClassName =
   "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#006B3C] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#00552F] disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryButtonClassName =
   "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#B5D2C3] bg-white px-3 py-2 text-sm font-semibold text-[#264536] transition hover:bg-[#F0F6F2] disabled:cursor-not-allowed disabled:opacity-50";
-
 const emptyOfficerForm = (): OfficerFormState => ({
   name: "",
   nip: "",
@@ -83,7 +76,6 @@ const emptyOfficerForm = (): OfficerFormState => ({
   assignedKelurahan: "",
   isActive: true,
 });
-
 const emptyKelurahanForm = (): KelurahanFormState => ({
   code: "",
   name: "",
@@ -97,10 +89,8 @@ const emptyKelurahanForm = (): KelurahanFormState => ({
   latitude: "",
   boundaryJson: "",
 });
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
-
 const getRequestErrorMessage = (error: unknown, fallback: string): string => {
   if (isAxiosError(error)) {
     const responseData: unknown = error.response?.data;
@@ -113,21 +103,18 @@ const getRequestErrorMessage = (error: unknown, fallback: string): string => {
   }
   return error instanceof Error ? error.message : fallback;
 };
-
 const getAssignedKelurahanId = (
   assignedKelurahan: ManagedOfficer["assignedKelurahan"]
 ): string =>
   typeof assignedKelurahan === "string"
     ? assignedKelurahan
     : assignedKelurahan?._id ?? "";
-
 const getAssignedKelurahanName = (
   assignedKelurahan: ManagedOfficer["assignedKelurahan"]
 ): string =>
   typeof assignedKelurahan === "string"
     ? "Wilayah ditetapkan"
     : assignedKelurahan?.name ?? "Belum ditetapkan";
-
 const parseNumber = (
   value: string,
   label: string,
@@ -145,7 +132,6 @@ const parseNumber = (
   }
   return parsed;
 };
-
 const parseBoundary = (json: string): GeoPolygon => {
   let parsed: unknown;
   try {
@@ -153,7 +139,6 @@ const parseBoundary = (json: string): GeoPolygon => {
   } catch {
     throw new Error("Batas kelurahan harus berupa GeoJSON Polygon yang valid.");
   }
-
   if (
     !isRecord(parsed) ||
     parsed.type !== "Polygon" ||
@@ -162,21 +147,18 @@ const parseBoundary = (json: string): GeoPolygon => {
   ) {
     throw new Error("GeoJSON batas kelurahan harus bertipe Polygon.");
   }
-
   const coordinates = parsed.coordinates.map((rawRing, ringIndex) => {
     if (!Array.isArray(rawRing) || rawRing.length < 4) {
       throw new Error(
         `Ring ke-${ringIndex + 1} harus memiliki sedikitnya empat titik.`
       );
     }
-
     const ring = rawRing.map((rawPoint, pointIndex) => {
       if (!Array.isArray(rawPoint) || rawPoint.length !== 2) {
         throw new Error(
           `Titik ke-${pointIndex + 1} pada ring ${ringIndex + 1} harus berformat [longitude, latitude].`
         );
       }
-
       const [longitude, latitude] = rawPoint;
       if (
         typeof longitude !== "number" ||
@@ -192,10 +174,8 @@ const parseBoundary = (json: string): GeoPolygon => {
           `Koordinat titik ke-${pointIndex + 1} pada ring ${ringIndex + 1} tidak valid.`
         );
       }
-
       return [longitude, latitude];
     });
-
     const first = ring[0];
     const last = ring[ring.length - 1];
     if (
@@ -208,26 +188,21 @@ const parseBoundary = (json: string): GeoPolygon => {
         `Ring ke-${ringIndex + 1} harus tertutup dengan mengulang titik pertama di akhir.`
       );
     }
-
     return ring;
   });
-
   return { type: "Polygon", coordinates };
 };
-
 const roleLabels: Record<OfficerRole, string> = {
   admin: "Admin",
   field_officer: "Petugas lapangan",
   health_analyst: "Analis kesehatan",
 };
-
 const riskLabels: Record<BaselineRiskLevel, string> = {
   low: "Rendah",
   moderate: "Sedang",
   high: "Tinggi",
   critical: "Kritis",
 };
-
 export default function AdminManagementPage() {
   const router = useRouter();
   const [access, setAccess] = useState<AccessState>("loading");
@@ -249,18 +224,15 @@ export default function AdminManagementPage() {
   );
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-
   useEffect(() => {
     let active = true;
     const token = getOfficerToken();
-
     if (!token) {
       router.replace("/login");
       return () => {
         active = false;
       };
     }
-
     getMyProfile(token)
       .then(async (response) => {
         if (!response.success || !response.data) {
@@ -270,13 +242,11 @@ export default function AdminManagementPage() {
           if (active) setAccess("forbidden");
           return;
         }
-
         const [officerData, kelurahanData] = await Promise.all([
           getManagedOfficers(token),
           getManagedKelurahans(token),
         ]);
         if (!active) return;
-
         setCurrentOfficerEmail(response.data.email.toLowerCase());
         setOfficers(officerData);
         setKelurahans(kelurahanData);
@@ -289,12 +259,10 @@ export default function AdminManagementPage() {
         );
         setAccess("error");
       });
-
     return () => {
       active = false;
     };
   }, [router]);
-
   const filteredOfficers = useMemo(() => {
     const query = officerSearch.trim().toLowerCase();
     if (!query) return officers;
@@ -310,7 +278,6 @@ export default function AdminManagementPage() {
         .includes(query)
     );
   }, [officerSearch, officers]);
-
   const filteredKelurahans = useMemo(() => {
     const query = kelurahanSearch.trim().toLowerCase();
     if (!query) return kelurahans;
@@ -326,7 +293,6 @@ export default function AdminManagementPage() {
         .includes(query)
     );
   }, [kelurahanSearch, kelurahans]);
-
   const setOfficerField = <K extends keyof OfficerFormState>(
     field: K,
     value: OfficerFormState[K]
@@ -335,7 +301,6 @@ export default function AdminManagementPage() {
       current ? { ...current, [field]: value } : current
     );
   };
-
   const setKelurahanField = <K extends keyof KelurahanFormState>(
     field: K,
     value: KelurahanFormState[K]
@@ -344,7 +309,6 @@ export default function AdminManagementPage() {
       current ? { ...current, [field]: value } : current
     );
   };
-
   const startEditingOfficer = (officer: ManagedOfficer) => {
     setFeedback(null);
     setOfficerForm({
@@ -359,7 +323,6 @@ export default function AdminManagementPage() {
       isActive: officer.isActive,
     });
   };
-
   const startEditingKelurahan = (kelurahan: ManagedKelurahan) => {
     setFeedback(null);
     setKelurahanForm({
@@ -378,17 +341,14 @@ export default function AdminManagementPage() {
       boundaryJson: JSON.stringify(kelurahan.boundary, null, 2),
     });
   };
-
   const handleOfficerSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!officerForm || saving) return;
-
     const token = getOfficerToken();
     if (!token) {
       setFeedback({ type: "error", message: "Sesi admin berakhir. Silakan masuk kembali." });
       return;
     }
-
     setSaving(true);
     setFeedback(null);
     try {
@@ -437,7 +397,6 @@ export default function AdminManagementPage() {
       setSaving(false);
     }
   };
-
   const handleAssignKelurahan = async (officer: ManagedOfficer) => {
     if (savingAssignmentId) return;
     const token = getOfficerToken();
@@ -445,7 +404,6 @@ export default function AdminManagementPage() {
       setFeedback({ type: "error", message: "Sesi admin berakhir. Silakan masuk kembali." });
       return;
     }
-
     const selectedId =
       assignmentDrafts[officer._id] ??
       getAssignedKelurahanId(officer.assignedKelurahan);
@@ -483,7 +441,6 @@ export default function AdminManagementPage() {
       setSavingAssignmentId(null);
     }
   };
-
   const handleDeleteOfficer = async (officer: ManagedOfficer) => {
     if (officer.email.toLowerCase() === currentOfficerEmail) return;
     if (
@@ -493,13 +450,11 @@ export default function AdminManagementPage() {
     ) {
       return;
     }
-
     const token = getOfficerToken();
     if (!token) {
       setFeedback({ type: "error", message: "Sesi admin berakhir. Silakan masuk kembali." });
       return;
     }
-
     setDeletingId(officer._id);
     setFeedback(null);
     try {
@@ -517,19 +472,16 @@ export default function AdminManagementPage() {
       setDeletingId(null);
     }
   };
-
   const handleKelurahanSubmit = async (
     event: FormEvent<HTMLFormElement>
   ) => {
     event.preventDefault();
     if (!kelurahanForm || saving) return;
-
     const token = getOfficerToken();
     if (!token) {
       setFeedback({ type: "error", message: "Sesi admin berakhir. Silakan masuk kembali." });
       return;
     }
-
     setSaving(true);
     setFeedback(null);
     try {
@@ -559,7 +511,6 @@ export default function AdminManagementPage() {
         },
         boundary: parseBoundary(kelurahanForm.boundaryJson),
       };
-
       if (kelurahanForm.id) {
         const updatePayload: UpdateKelurahanPayload = {
           ...payload,
@@ -610,7 +561,6 @@ export default function AdminManagementPage() {
       setSaving(false);
     }
   };
-
   const handleDeleteKelurahan = async (kelurahan: ManagedKelurahan) => {
     const assignedCount = officers.filter(
       (officer) =>
@@ -624,13 +574,11 @@ export default function AdminManagementPage() {
     ) {
       return;
     }
-
     const token = getOfficerToken();
     if (!token) {
       setFeedback({ type: "error", message: "Sesi admin berakhir. Silakan masuk kembali." });
       return;
     }
-
     setDeletingId(kelurahan._id);
     setFeedback(null);
     try {
@@ -648,7 +596,6 @@ export default function AdminManagementPage() {
       setDeletingId(null);
     }
   };
-
   if (access === "loading") {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F5F4ED] p-6">
@@ -658,7 +605,6 @@ export default function AdminManagementPage() {
       </main>
     );
   }
-
   if (access === "forbidden") {
     return (
       <main className="min-h-screen bg-[#F5F4ED] p-6">
@@ -679,7 +625,6 @@ export default function AdminManagementPage() {
       </main>
     );
   }
-
   if (access === "error") {
     return (
       <main className="min-h-screen bg-[#F5F4ED] p-6">
@@ -700,7 +645,6 @@ export default function AdminManagementPage() {
       </main>
     );
   }
-
   return (
     <main className="min-h-screen bg-[#F5F4ED] px-4 py-5 sm:px-6">
       <div className="mx-auto max-w-6xl space-y-5">
@@ -721,7 +665,6 @@ export default function AdminManagementPage() {
             </p>
           </div>
         </header>
-
         {feedback && (
           <p
             role={feedback.type === "error" ? "alert" : "status"}
@@ -734,7 +677,6 @@ export default function AdminManagementPage() {
             {feedback.message}
           </p>
         )}
-
         <section className="rounded-2xl border border-[#D5E2D9] bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -757,7 +699,6 @@ export default function AdminManagementPage() {
               Tambah petugas
             </button>
           </div>
-
           {officerForm && (
             <form
               onSubmit={handleOfficerSubmit}
@@ -918,7 +859,6 @@ export default function AdminManagementPage() {
               </div>
             </form>
           )}
-
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-[#708477]">
               {filteredOfficers.length} dari {officers.length} petugas
@@ -931,7 +871,6 @@ export default function AdminManagementPage() {
               onChange={(event) => setOfficerSearch(event.target.value)}
             />
           </div>
-
           {filteredOfficers.length === 0 ? (
             <p className="mt-3 rounded-xl bg-[#F7FAF7] p-4 text-sm text-[#708477]">
               {officers.length === 0
@@ -948,7 +887,6 @@ export default function AdminManagementPage() {
                   assignmentDrafts[officer._id] ?? assignedId;
                 const isCurrentOfficer =
                   officer.email.toLowerCase() === currentOfficerEmail;
-
                 return (
                   <article
                     key={officer._id}
@@ -1014,7 +952,6 @@ export default function AdminManagementPage() {
                         </button>
                       </div>
                     </div>
-
                     <div className="mt-4 border-t border-[#E6ECE8] pt-3">
                       <p className="mb-2 text-xs font-semibold text-[#536D60]">
                         Penempatan: {getAssignedKelurahanName(officer.assignedKelurahan)}
@@ -1059,7 +996,6 @@ export default function AdminManagementPage() {
             </div>
           )}
         </section>
-
         <section className="rounded-2xl border border-[#D5E2D9] bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -1082,7 +1018,6 @@ export default function AdminManagementPage() {
               Tambah kelurahan
             </button>
           </div>
-
           {kelurahanForm && (
             <form
               onSubmit={handleKelurahanSubmit}
@@ -1241,7 +1176,6 @@ export default function AdminManagementPage() {
               </div>
             </form>
           )}
-
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-[#708477]">
               {filteredKelurahans.length} dari {kelurahans.length} kelurahan
@@ -1254,7 +1188,6 @@ export default function AdminManagementPage() {
               onChange={(event) => setKelurahanSearch(event.target.value)}
             />
           </div>
-
           {filteredKelurahans.length === 0 ? (
             <p className="mt-3 rounded-xl bg-[#F7FAF7] p-4 text-sm text-[#708477]">
               {kelurahans.length === 0
@@ -1269,7 +1202,6 @@ export default function AdminManagementPage() {
                     getAssignedKelurahanId(officer.assignedKelurahan) ===
                     kelurahan._id
                 ).length;
-
                 return (
                   <article
                     key={kelurahan._id}

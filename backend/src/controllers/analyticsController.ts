@@ -4,6 +4,7 @@ import {
   getAreaRiskScoreMap,
   getNasaFirmsHotspots,
   getSingleGridRiskScoreO1,
+  fetchGridWeatherMetrics,
 } from '../services/analyticsService.js';
 import { AppError } from '../utils/AppError.js';
 import { handleControllerError, sendSuccess } from '../utils/response.js';
@@ -47,6 +48,38 @@ export const getRiskScores = async (
       error,
       'AnalyticsController.getRiskScores',
       'Gagal memuat peta skor risiko area.'
+    );
+  }
+};
+
+export const getCurrentWeather = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
+    if (
+      req.query.lat === undefined ||
+      req.query.lng === undefined ||
+      !Number.isFinite(lat) ||
+      lat < -90 ||
+      lat > 90 ||
+      !Number.isFinite(lng) ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      throw new AppError('Koordinat lat dan lng tidak valid.', 400);
+    }
+
+    const weather = await fetchGridWeatherMetrics(lat, lng);
+    sendSuccess(res, weather, 'Data cuaca area berhasil dimuat.', 200);
+  } catch (error) {
+    handleControllerError(
+      res,
+      error,
+      'AnalyticsController.getCurrentWeather',
+      'Gagal memuat data cuaca area.'
     );
   }
 };

@@ -4,7 +4,8 @@ import { AqiReading } from '../models/AqiReading.js';
 import type { IGeoPoint, IGeoPolygon } from '../models/GeoJSON.js';
 import { GridCell, type IGridCell } from '../models/GridCell.js';
 import { Report, type ReportSeverity } from '../models/Report.js';
-import { getCache, isRedisReady, setCache } from '../utils/cache.js';
+import { AppError } from '../utils/AppError.js';
+import { deleteCache, getCache, isRedisReady, setCache } from '../utils/cache.js';
 import {
   calculateDistanceMeters,
   ensureDefaultGridCells,
@@ -37,6 +38,7 @@ export interface WeatherMetrics {
   humidityPct: number;
   windSpeedKmh: number;
   windDirectionDeg?: number;
+  precipitationMm?: number;
   source: 'open_meteo_live' | 'mongodb_reading' | 'default_baseline';
 }
 
@@ -136,7 +138,12 @@ export interface NasaFirmsHotspotResponse {
     cacheKey: string;
     ttlSeconds: number;
     cached: boolean;
-    providerStatus: 'nasa_firms_live' | 'redis_cache' | 'fallback_no_api_key' | 'fallback_upstream_timeout';
+    providerStatus:
+      | 'nasa_firms_live'
+      | 'redis_cache'
+      | 'fallback_no_api_key'
+      | 'fallback_upstream_timeout'
+      | 'fallback_upstream_error';
     upstreamNotice?: string;
     fetchedAt: string;
     expiresAt: string;
@@ -315,6 +322,7 @@ interface OpenMeteoForecastWeatherResponse {
     relative_humidity_2m?: number | null;
     wind_speed_10m?: number | null;
     wind_direction_10m?: number | null;
+    precipitation?: number | null;
   };
 }
 
@@ -332,7 +340,7 @@ export const fetchGridWeatherMetrics = async (
     url.searchParams.set('longitude', lng.toFixed(6));
     url.searchParams.set(
       'current',
-      'temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m'
+      'temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation'
     );
     url.searchParams.set('timezone', 'Asia/Jakarta');
 
@@ -354,6 +362,9 @@ export const fetchGridWeatherMetrics = async (
           windSpeedKmh: Number((data.current.wind_speed_10m ?? 8.5).toFixed(1)),
           ...(typeof data.current.wind_direction_10m === 'number'
             ? { windDirectionDeg: Math.round(data.current.wind_direction_10m) }
+            : {}),
+          ...(typeof data.current.precipitation === 'number'
+            ? { precipitationMm: Number(data.current.precipitation.toFixed(1)) }
             : {}),
           source: 'open_meteo_live',
         };
@@ -792,6 +803,37 @@ export const parseNasaFirmsCsvToHotspots = (csvText: string): NasaFirmsHotspotIt
   return hotspots;
 };
 
+const normalizeNasaFirmsArea = (bbox: string): string => {
+  if (bbox.toLowerCase() === 'world') {
+    return 'world';
+  }
+
+  const coordinates = bbox.split(',').map((value) => Number(value.trim()));
+  if (
+    coordinates.length !== 4 ||
+    coordinates.some((value) => !Number.isFinite(value))
+  ) {
+    throw new AppError(
+      'Bounding box hotspot harus berupa west,south,east,north atau world.',
+      400
+    );
+  }
+
+  const [west, south, east, north] = coordinates;
+  if (
+    west < -180 ||
+    west >= east ||
+    east > 180 ||
+    south < -90 ||
+    south >= north ||
+    north > 90
+  ) {
+    throw new AppError('Koordinat bounding box hotspot berada di luar batas.', 400);
+  }
+
+  return coordinates.map((value) => encodeURIComponent(String(value))).join(',');
+};
+
 export const getNasaFirmsHotspots = async (options: {
   bbox?: string;
   source?: string;
@@ -803,15 +845,21 @@ export const getNasaFirmsHotspots = async (options: {
     (options.source ?? NASA_FIRMS_DEFAULT_SOURCE).trim() || NASA_FIRMS_DEFAULT_SOURCE;
   const rawDayRange = Number(options.dayRange ?? NASA_FIRMS_DEFAULT_DAY_RANGE);
   const dayRange =
-    Number.isInteger(rawDayRange) && rawDayRange >= 1 && rawDayRange <= 10
+    Number.isInteger(rawDayRange) && rawDayRange >= 1 && rawDayRange <= 5
       ? rawDayRange
       : NASA_FIRMS_DEFAULT_DAY_RANGE;
+  const areaPath = normalizeNasaFirmsArea(bbox);
 
   const cacheKey = buildNasaFirmsCacheKey(bbox, sourceSatellite, dayRange);
+  const mapKey = (process.env.NASA_FIRMS_MAP_KEY ?? process.env.FIRMS_API_KEY ?? '').trim();
 
   if (!options.forceRefresh) {
     const cachedData = await getCache<NasaFirmsHotspotResponse>(cacheKey);
-    if (cachedData) {
+    const staleFallbackAfterKeyConfiguration =
+      Boolean(mapKey) &&
+      cachedData !== null &&
+      cachedData.cache.providerStatus !== 'nasa_firms_live';
+    if (cachedData && !staleFallbackAfterKeyConfiguration) {
       return {
         ...cachedData,
         cache: {
@@ -823,7 +871,6 @@ export const getNasaFirmsHotspots = async (options: {
     }
   }
 
-  const mapKey = (process.env.NASA_FIRMS_MAP_KEY ?? process.env.FIRMS_API_KEY ?? '').trim();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + NASA_FIRMS_CACHE_TTL_SECONDS * 1000);
 
@@ -840,7 +887,7 @@ export const getNasaFirmsHotspots = async (options: {
     const timeoutId = setTimeout(() => controller.abort(), NASA_FIRMS_FETCH_TIMEOUT_MS);
 
     try {
-      const endpoint = `${NASA_FIRMS_BASE_URL}/${encodeURIComponent(mapKey)}/${encodeURIComponent(sourceSatellite)}/${encodeURIComponent(bbox)}/${dayRange}`;
+      const endpoint = `${NASA_FIRMS_BASE_URL}/${encodeURIComponent(mapKey)}/${encodeURIComponent(sourceSatellite)}/${areaPath}/${dayRange}`;
       const response = await fetch(endpoint, {
         method: 'GET',
         headers: {
@@ -851,7 +898,26 @@ export const getNasaFirmsHotspots = async (options: {
       });
 
       if (!response.ok) {
-        throw new Error(`NASA FIRMS HTTP ${response.status} (${response.statusText})`);
+        const responseBody = await response.text();
+        if (/invalid[_\s]+map[_\s]+key/i.test(responseBody)) {
+          throw new Error(
+            'NASA FIRMS menolak map key. Pastikan key valid dan aktif.'
+          );
+        }
+
+        const safeResponseBody = responseBody
+          .split(encodeURIComponent(mapKey))
+          .join('[redacted]')
+          .split(mapKey)
+          .join('[redacted]')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 200);
+        throw new Error(
+          `NASA FIRMS HTTP ${response.status} (${response.statusText})${
+            safeResponseBody ? `: ${safeResponseBody}` : ''
+          }`
+        );
       }
 
       const csvText = await response.text();
@@ -861,7 +927,10 @@ export const getNasaFirmsHotspots = async (options: {
 
       hotspots = parseNasaFirmsCsvToHotspots(csvText);
     } catch (error) {
-      providerStatus = 'fallback_upstream_timeout';
+      providerStatus =
+        error instanceof Error && error.name === 'AbortError'
+          ? 'fallback_upstream_timeout'
+          : 'fallback_upstream_error';
       upstreamNotice =
         error instanceof Error && error.name === 'AbortError'
           ? `Koneksi ke NASA FIRMS dihentikan karena melebihi batas timeout (${NASA_FIRMS_FETCH_TIMEOUT_MS}ms).`
@@ -902,7 +971,11 @@ export const getNasaFirmsHotspots = async (options: {
     },
   };
 
-  await setCache(cacheKey, payload, NASA_FIRMS_CACHE_TTL_SECONDS);
+  if (providerStatus === 'nasa_firms_live') {
+    await setCache(cacheKey, payload, NASA_FIRMS_CACHE_TTL_SECONDS);
+  } else {
+    await deleteCache(cacheKey);
+  }
 
   return payload;
 };

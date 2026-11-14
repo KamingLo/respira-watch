@@ -9,7 +9,7 @@ import type {
   ClusterStatus,
 } from '../models/Cluster.js';
 import type { IGeoPoint, IGeoPolygon } from '../models/GeoJSON.js';
-import type { ReportSeverity, ReportStatus } from '../models/Report.js';
+import type { ReportAgeGroup, ReportSeverity, ReportStatus } from '../models/Report.js';
 import { verifyOfficerToken, type JwtOfficerPayload } from '../utils/jwt.js';
 
 export const SOCKET_EVENTS = {
@@ -54,6 +54,7 @@ export interface NewReportSocketPayload {
     symptoms: string[];
     sickCount: number;
     age: number;
+    ageGroups: ReportAgeGroup[];
     severity: ReportSeverity;
     status: ReportStatus;
     geom: IGeoPoint;

@@ -18,10 +18,18 @@ export interface GeoPoint {
   coordinates: [number, number]; // [longitude, latitude]
 }
 
+export interface ReportLocationSuggestion {
+  name: string;
+  kecamatan?: string;
+  kota?: string;
+  provinsi?: string;
+}
+
 export interface ReportLocation {
   address: string;
   coordinates: [number, number]; // [longitude, latitude]
   kelurahanId?: string;
+  locationSuggestion?: ReportLocationSuggestion;
 }
 
 export interface ReportPayload {
@@ -35,6 +43,7 @@ export interface ReportPayload {
   deviceHash: string;
   description: string;
   address?: string;
+  locationSuggestion?: ReportLocationSuggestion;
   geom: GeoPoint;
   kelurahanId?: string;
 }

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   createKelurahan,
   listKelurahans,
+  listPublicKelurahans,
   getKelurahanById,
   updateKelurahan,
   deleteKelurahan,
@@ -10,6 +11,7 @@ import { authenticateOfficer, authorizeRoles } from '../middlewares/authMiddlewa
 
 const router: Router = Router();
 
+router.get('/public', listPublicKelurahans);
 router.get('/', authenticateOfficer, listKelurahans);
 
 router.get('/:id', authenticateOfficer, getKelurahanById);

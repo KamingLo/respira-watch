@@ -23,6 +23,7 @@ interface SearchResult {
   display_name: string;
   lat: string;
   lon: string;
+  address?: Record<string, unknown>;
 }
 
 interface ReportLocationPickerProps {
@@ -34,6 +35,41 @@ const DEFAULT_POSITION: [number, number] = [
   -3.344,
   114.591,
 ];
+
+const getAddressValue = (
+  address: Record<string, unknown> | undefined,
+  keys: string[]
+): string | undefined => {
+  if (!address) return undefined;
+  for (const key of keys) {
+    const value = address[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+};
+
+const getLocationSuggestion = (
+  address: Record<string, unknown> | undefined
+) => {
+  const name = getAddressValue(address, [
+    "suburb",
+    "village",
+    "quarter",
+    "neighbourhood",
+  ]);
+  if (!name) return undefined;
+
+  const kecamatan = getAddressValue(address, ["city_district", "county"]);
+  const kota = getAddressValue(address, ["city", "town", "municipality"]);
+  const provinsi = getAddressValue(address, ["state", "province"]);
+
+  return {
+    name,
+    ...(kecamatan ? { kecamatan } : {}),
+    ...(kota ? { kota } : {}),
+    ...(provinsi ? { provinsi } : {}),
+  };
+};
 
 export default function ReportLocationPicker({
   value,
@@ -108,6 +144,7 @@ export default function ReportLocationPicker({
           format: "jsonv2",
           limit: "5",
           countrycodes: "id",
+          addressdetails: "1",
         });
 
         const response = await fetch(
@@ -158,6 +195,7 @@ export default function ReportLocationPicker({
         lat: String(lat),
         lon: String(lng),
         format: "jsonv2",
+        addressdetails: "1",
       });
 
       const response = await fetch(
@@ -179,6 +217,9 @@ export default function ReportLocationPicker({
       onChange({
         address,
         coordinates: [lng, lat],
+        ...(getLocationSuggestion(data.address)
+          ? { locationSuggestion: getLocationSuggestion(data.address) }
+          : {}),
       });
     } catch {
       const address = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
@@ -205,6 +246,9 @@ export default function ReportLocationPicker({
     const location: ReportLocation = {
       address: result.display_name,
       coordinates: [lng, lat],
+      ...(getLocationSuggestion(result.address)
+        ? { locationSuggestion: getLocationSuggestion(result.address) }
+        : {}),
     };
 
     setQuery(result.display_name);

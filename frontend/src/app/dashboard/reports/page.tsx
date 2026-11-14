@@ -10,8 +10,16 @@ import {
   type OfficerReport,
   type OfficerReportStatus,
 } from "@/services/officer-report.service";
+import { getOfficerToken } from "@/features/auth/authToken";
+import { getMyProfile } from "@/services/auth.service";
+import useDashboardSocket from "@/hooks/useDashboardSocket";
 
-type ReportListFilter = "all" | "pending" | "accepted" | "rejected";
+type ReportListFilter =
+  | "all"
+  | "pending"
+  | "accepted"
+  | "rejected"
+  | "unmapped";
 
 const statusLabels: Record<OfficerReportStatus, string> = {
   pending: "Menunggu keputusan",
@@ -31,19 +39,64 @@ const decisionOptions: Array<{
 
 export default function OfficerReportsPage() {
   const [reports, setReports] = useState<OfficerReport[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<ReportListFilter>("pending");
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [loadedVersion, setLoadedVersion] = useState(-1);
   const [loadedFilter, setLoadedFilter] = useState<ReportListFilter | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const loading = loadedVersion !== refreshVersion || loadedFilter !== statusFilter;
+  const loading =
+    profileLoading ||
+    loadedVersion !== refreshVersion ||
+    loadedFilter !== statusFilter;
+
+  useEffect(() => {
+    let active = true;
+    const loadProfile = async () => {
+      const token = getOfficerToken();
+      if (!token) {
+        throw new Error("Sesi petugas tidak ditemukan. Silakan masuk kembali.");
+      }
+
+      const response = await getMyProfile(token);
+      if (!response.success || !response.data?.role) {
+        throw new Error(response.message || "Gagal memeriksa hak akses.");
+      }
+      if (active) {
+        setIsAdmin(response.data.role === "admin");
+      }
+    };
+
+    void loadProfile()
+      .catch((requestError: unknown) => {
+        if (active) {
+          setProfileError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Gagal memeriksa hak akses admin."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setProfileLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
     const loadReports = async (): Promise<OfficerReport[]> => {
+      if (statusFilter === "unmapped") {
+        return getOfficerReports({ unmapped: true });
+      }
       if (statusFilter === "pending" || statusFilter === "rejected") {
-        return getOfficerReports(statusFilter);
+        return getOfficerReports({ status: statusFilter });
       }
 
       const currentReports = await getOfficerReports();
@@ -51,7 +104,7 @@ export default function OfficerReportsPage() {
         return currentReports.filter((report) => report.status !== "pending");
       }
 
-      const rejectedReports = await getOfficerReports("rejected");
+      const rejectedReports = await getOfficerReports({ status: "rejected" });
       return [...currentReports, ...rejectedReports].sort(
         (left, right) =>
           Date.parse(right.reportedAt) - Date.parse(left.reportedAt)
@@ -90,6 +143,8 @@ export default function OfficerReportsPage() {
     setRefreshVersion((current) => current + 1);
   }, []);
 
+  useDashboardSocket({ onReportNew: loadReports });
+
   const handleDecision = async (
     report: OfficerReport,
     status: Extract<OfficerReportStatus, "verified" | "rejected">
@@ -100,7 +155,9 @@ export default function OfficerReportsPage() {
     try {
       const updated = await updateOfficerReportStatus(report._id, status);
       setReports((current) =>
-        statusFilter !== "all" && statusFilter !== status
+        statusFilter !== "all" &&
+        statusFilter !== "unmapped" &&
+        statusFilter !== status
           ? current.filter((item) => item._id !== report._id)
           : current.map((item) => (item._id === report._id ? updated : item))
       );
@@ -164,12 +221,22 @@ export default function OfficerReportsPage() {
             <option value="accepted">Diterima</option>
             <option value="rejected">Ditolak</option>
             <option value="all">Semua laporan</option>
+            {isAdmin && (
+              <option value="unmapped">Belum terpetakan</option>
+            )}
           </select>
           <p className="mt-2 text-xs text-[#708477]">
-            Data menyesuaikan hak akses wilayah akun petugas. Laporan ditolak
-            tidak termasuk hitungan di peta warga.
+            {statusFilter === "unmapped"
+              ? "Hanya admin: laporan ini belum cocok dengan batas kelurahan yang tersedia. Data kelurahan tidak dibuat otomatis."
+              : "Data menyesuaikan hak akses wilayah akun petugas. Laporan ditolak tidak termasuk hitungan di peta warga."}
           </p>
         </section>
+
+        {profileError && (
+          <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+            {profileError}
+          </p>
+        )}
 
         {error && (
           <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
@@ -183,7 +250,9 @@ export default function OfficerReportsPage() {
           </p>
         ) : reports.length === 0 ? (
           <p className="rounded-2xl bg-white p-5 text-sm text-[#536D60]">
-            Tidak ada laporan untuk filter ini di wilayah tugas Anda.
+            {statusFilter === "unmapped"
+              ? "Tidak ada laporan yang belum terpetakan."
+              : "Tidak ada laporan untuk filter ini di wilayah tugas Anda."}
           </p>
         ) : (
           <div className="space-y-3">
@@ -198,15 +267,24 @@ export default function OfficerReportsPage() {
                       {report.category.toUpperCase()} · {report.sickCount} orang
                     </h2>
                     <p className="mt-1 text-sm text-[#536D60]">
-                      {report.kelurahanId?.name ?? report.address ?? "Wilayah tidak diketahui"}
+                      {report.kelurahanId?.name ??
+                        report.address ??
+                        "Alamat tidak tersedia"}
                       {report.kelurahanId?.kecamatan
                         ? ` · ${report.kelurahanId.kecamatan}`
                         : ""}
                     </p>
                   </div>
-                  <span className="rounded-full bg-[#E9F4ED] px-3 py-1 text-xs font-bold text-[#176B45]">
-                    {statusLabels[report.status]}
-                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {!report.kelurahanId && (
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">
+                        Belum terpetakan
+                      </span>
+                    )}
+                    <span className="rounded-full bg-[#E9F4ED] px-3 py-1 text-xs font-bold text-[#176B45]">
+                      {statusLabels[report.status]}
+                    </span>
+                  </div>
                 </div>
                 <p className="mt-3 text-sm text-[#264536]">
                   Gejala: {report.symptoms.join(", ")} · Keparahan:{" "}

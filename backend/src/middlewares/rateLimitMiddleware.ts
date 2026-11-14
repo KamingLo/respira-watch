@@ -26,6 +26,18 @@ export const extractDeviceHashFromRequest = (req: Request): string => {
   return `ip:${ipKeyGenerator(req.ip || '127.0.0.1')}`;
 };
 
+export const extractReportRateLimitKey = (req: Request): string => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const rawCategory = (body.category ?? body.kategori ?? '')
+    .toString()
+    .trim()
+    .toLowerCase();
+  const category =
+    rawCategory === 'ispa' || rawCategory === 'diare' ? rawCategory : 'invalid';
+
+  return `${extractDeviceHashFromRequest(req)}:category:${category}`;
+};
+
 export const reportRateLimiter = rateLimit({
   windowMs: REPORT_COOLDOWN_WINDOW_MS,
   max: REPORT_COOLDOWN_MAX_REQUESTS,
@@ -33,7 +45,7 @@ export const reportRateLimiter = rateLimit({
   legacyHeaders: false,
   skipFailedRequests: true,
   passOnStoreError: true,
-  keyGenerator: (req: Request): string => extractDeviceHashFromRequest(req),
+  keyGenerator: extractReportRateLimitKey,
   store: new RedisStore({
     prefix: 'rl:reports:device:',
     sendCommand: async (...args: string[]): Promise<RedisReply> => {
@@ -52,7 +64,7 @@ export const reportRateLimiter = rateLimit({
     res.status(429).json({
       success: false,
       message:
-        'Perangkat ini sudah mengirimkan laporan dalam 1 jam terakhir. Silakan tunggu masa cooldown 1 jam berakhir sebelum mengirim atau memperbarui laporan kembali.',
+        'Perangkat ini sudah mengirimkan laporan dengan kategori yang sama dalam 1 jam terakhir. Silakan tunggu cooldown kategori ini berakhir.',
       retryAfterSeconds: Math.ceil(REPORT_COOLDOWN_WINDOW_MS / 1000),
       deviceKey,
     });

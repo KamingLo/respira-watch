@@ -18,6 +18,7 @@ import type {
   GeoPoint,
   ReportCategory,
   ReportAgeGroup,
+  ReportLocationSuggestion,
   ReportSeverity,
 } from "@/types/report.types";
 
@@ -30,6 +31,7 @@ interface ReportData {
   ageGroups: ReportAgeGroup[];
   severity: ReportSeverity;
   location: string;
+  locationSuggestion?: ReportLocationSuggestion;
   kelurahanId?: string;
   geom: GeoPoint;
 }
@@ -97,6 +99,9 @@ export default function ConfirmReportPage() {
       severity: report.severity,
       description: report.description,
       address: report.location,
+      ...(report.locationSuggestion
+        ? { locationSuggestion: report.locationSuggestion }
+        : {}),
       geom: report.geom,
       ...(report.kelurahanId ? { kelurahanId: report.kelurahanId } : {}),
     });
