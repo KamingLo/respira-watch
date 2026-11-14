@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { login as loginService } from "@/services/auth.service";
+import { setOfficerToken } from "@/features/auth/authToken";
 
 interface Officer {
   id: string;
@@ -39,6 +40,7 @@ export default function useAuth() {
         throw new Error(response.message || "Login gagal.");
       }
 
+      setOfficerToken(response.data.token);
       setOfficer(response.data.officer);
 
       return response.data;

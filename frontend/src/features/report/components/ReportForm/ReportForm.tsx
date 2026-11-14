@@ -17,19 +17,17 @@ import {
 import Button from "@/components/ui/Button/Button";
 import Card from "@/components/ui/Card/Card";
 import ReportLocationPicker from "@/features/report/components/ReportLocationPicker/ReportLocationPicker";
+import {
+  symptoms,
+  symptomCategoryIcons,
+  type SymptomCategory,
+} from "@/features/report/symptoms";
 
 import type {
   ReportCategory,
   ReportSeverity,
   ReportLocation,
 } from "@/types/report.types";
-
-type Category = "ISPA" | "Diare";
-
-interface Symptom {
-  label: string;
-  icon: string;
-}
 
 interface SpeechRecognitionResultEvent extends Event {
   resultIndex: number;
@@ -49,26 +47,12 @@ interface SpeechRecognitionInstance {
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
 
-const symptoms: Record<Category, Symptom[]> = {
-  ISPA: [
-    { label: "Batuk", icon: "/images/symptoms/batuk.png" },
-    { label: "Demam", icon: "/images/symptoms/demam.png" },
-    { label: "Sesak", icon: "/images/symptoms/sesak.png" },
-    { label: "Pilek", icon: "/images/symptoms/pilek.png" },
-  ],
-  Diare: [
-    { label: "BAB Cair", icon: "/images/symptoms/babcair.png" },
-    { label: "Muntah", icon: "/images/symptoms/muntah.png" },
-    { label: "Demam", icon: "/images/symptoms/demam.png" },
-  ],
-};
-
 export default function ReportForm() {
   const router = useRouter();
 
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
-  const [category, setCategory] = useState<Category>("ISPA");
+  const [category, setCategory] = useState<SymptomCategory>("ISPA");
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([
     "Batuk",
     "Demam",
@@ -94,7 +78,7 @@ export default function ReportForm() {
     );
   };
 
-  const handleCategoryChange = (value: Category) => {
+  const handleCategoryChange = (value: SymptomCategory) => {
     setCategory(value);
     setSelectedSymptoms([]);
   };
@@ -260,26 +244,38 @@ export default function ReportForm() {
               <button
                 type="button"
                 onClick={() => handleCategoryChange("ISPA")}
-                className={`flex items-center justify-center gap-2 rounded-full border-2 py-3 text-sm font-bold transition hover:-translate-y-0.5 ${
+                className={`flex items-center justify-center gap-2 rounded-full border-2 py-2 text-sm font-bold transition hover:-translate-y-0.5 ${
                   category === "ISPA"
                     ? "border-green-700 bg-green-100 text-green-800"
                     : "border-[#B5D2C3] bg-[#EDF2EE] text-gray-700 hover:bg-green-50"
                 }`}
               >
-                <Activity size={19} />
+                <Image
+                  src={symptomCategoryIcons.ISPA}
+                  alt=""
+                  width={32}
+                  height={32}
+                  className="h-8 w-8 object-cover"
+                />
                 ISPA
               </button>
 
               <button
                 type="button"
                 onClick={() => handleCategoryChange("Diare")}
-                className={`flex items-center justify-center gap-2 rounded-full border-2 py-3 text-sm font-bold transition hover:-translate-y-0.5 ${
+                className={`flex items-center justify-center gap-2 rounded-full border-2 py-2 text-sm font-bold transition hover:-translate-y-0.5 ${
                   category === "Diare"
                     ? "border-green-700 bg-green-100 text-green-800"
                     : "border-[#B5D2C3] bg-[#EDF2EE] text-gray-700 hover:bg-green-50"
                 }`}
               >
-                <Activity size={19} />
+                <Image
+                  src={symptomCategoryIcons.Diare}
+                  alt=""
+                  width={32}
+                  height={32}
+                  className="h-8 w-8 object-cover"
+                />
                 Diare
               </button>
 
@@ -403,9 +399,9 @@ export default function ReportForm() {
                     <Image
                       src={symptom.icon}
                       alt={symptom.label}
-                      width={48}
-                      height={48}
-                      className="h-12 w-12 object-contain"
+                      width={80}
+                      height={80}
+                      className="h-20 w-20 object-cover"
                     />
 
                     <span className="text-base font-bold">

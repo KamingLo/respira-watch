@@ -1,98 +1,99 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Map,
   ClipboardList,
-  Settings,
-  LogOut,
+  Map,
+  UserRound,
+  Wind,
 } from "lucide-react";
 
 const menuItems = [
   {
-    label: "Overview",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "Peta Cluster",
-    href: "/dashboard",
+    label: "Peta Klaster",
+    href: "/dashboard#map",
     icon: Map,
   },
   {
-    label: "Laporan",
-    href: "/dashboard",
+    label: "Daftar Laporan",
+    href: "/dashboard#clusters",
     icon: ClipboardList,
+  },
+  {
+    label: "Tren Kualitas Udara",
+    href: "/dashboard#trend",
+    icon: Wind,
+  },
+  {
+    label: "Akun Petugas",
+    href: "/login",
+    icon: UserRound,
   },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({
+  children,
+}: {
+  children?: React.ReactNode;
+}) {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden min-h-screen w-64 shrink-0 flex-col border-r border-gray-200 bg-white md:flex">
-
-      {/* Logo */}
-      <div className="flex h-20 items-center gap-3 border-b border-gray-100 px-6">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-700 text-xl text-white">
-          R
+    <aside className="sticky top-0 hidden h-screen min-h-[620px] w-[208px] shrink-0 flex-col border-r border-[#E6ECE8] bg-white p-4 lg:flex">
+      <Link
+        href="/dashboard"
+        aria-label="RespiraWatch - Dashboard"
+        className="mb-7 block"
+      >
+        <div className="relative h-10 w-full overflow-hidden">
+          <Image
+            src="/images/repirawatchlogo.png"
+            alt="RespiraWatch"
+            width={1920}
+            height={1080}
+            className="absolute left-1/2 top-1/2 h-auto w-full max-w-none -translate-x-1/2 -translate-y-1/2 scale-[1.6]"
+            priority
+          />
         </div>
-
-        <div>
-          <h1 className="font-bold text-gray-900">
-            RespiraWatch
-          </h1>
-          <p className="text-xs text-gray-500">
-            Officer Dashboard
-          </p>
-        </div>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 space-y-2 px-4 py-6">
-        <p className="mb-4 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
-          Main Menu
+        <p className="mt-1 truncate text-xs text-[#708477]">
+          PKM Kelayan Timur
         </p>
+      </Link>
 
+      <nav aria-label="Navigasi dashboard" className="space-y-1.5">
         {menuItems.map((item, index) => {
           const Icon = item.icon;
-          const active =
-            index === 0
-              ? pathname === "/dashboard"
-              : false;
+          const active = pathname === "/dashboard" && index === 0;
 
           return (
             <Link
               key={item.label}
               href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition ${
+              aria-current={active ? "page" : undefined}
+              className={`flex min-h-10 items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition ${
                 active
-                  ? "bg-green-50 font-semibold text-green-700"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-green-700"
+                  ? "bg-[#006B3C] text-white shadow-sm"
+                  : "text-[#536D60] hover:bg-[#EDF5F0] hover:text-[#006B3C]"
               }`}
             >
-              <Icon size={20} />
-              {item.label}
+              <Icon size={16} className="shrink-0" />
+              <span>{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Bottom Menu */}
-      <div className="space-y-2 border-t border-gray-100 p-4">
-        <button className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm text-gray-600 hover:bg-gray-50">
-          <Settings size={20} />
-          Pengaturan
-        </button>
-
-        <button className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm text-red-600 hover:bg-red-50">
-          <LogOut size={20} />
-          Keluar
-        </button>
-      </div>
-
+      <section
+        id="clusters"
+        className="mt-auto rounded-2xl bg-[#F7F6F0] p-3"
+      >
+        <h2 className="mb-2 text-[11px] font-bold text-[#264536]">
+          Klaster Aktif (72 Jam)
+        </h2>
+        <div className="space-y-2">{children}</div>
+      </section>
     </aside>
   );
 }

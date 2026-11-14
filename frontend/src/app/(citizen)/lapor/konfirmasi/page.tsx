@@ -11,6 +11,7 @@ import {
 
 import Button from "@/components/ui/Button/Button";
 import Card from "@/components/ui/Card/Card";
+import { symptoms, type SymptomCategory } from "@/features/report/symptoms";
 import useReport from "@/hooks/useReport";
 import type {
   GeoPoint,
@@ -18,10 +19,8 @@ import type {
   ReportSeverity,
 } from "@/types/report.types";
 
-type FormCategory = "ISPA" | "Diare";
-
 interface ReportData {
-  category: FormCategory;
+  category: SymptomCategory;
   selectedSymptoms: string[];
   description: string;
   age: number;
@@ -29,26 +28,6 @@ interface ReportData {
   location: string;
   geom: GeoPoint;
 }
-
-interface Symptom {
-  label: string;
-  icon: string;
-}
-
-const symptoms: Record<FormCategory, Symptom[]> = {
-  ISPA: [
-    { label: "Batuk", icon: "/images/symptoms/batuk.png" },
-    { label: "Demam", icon: "/images/symptoms/demam.png" },
-    { label: "Sesak", icon: "/images/symptoms/sesak.png" },
-    { label: "Pilek", icon: "/images/symptoms/pilek.png" },
-  ],
-
-  Diare: [
-    { label: "BAB Cair", icon: "/images/symptoms/babcair.png" },
-    { label: "Muntah", icon: "/images/symptoms/muntah.png" },
-    { label: "Demam", icon: "/images/symptoms/demam.png" },
-  ],
-};
 
 export default function ConfirmReportPage() {
   const router = useRouter();
@@ -206,9 +185,9 @@ export default function ConfirmReportPage() {
                   <Image
                     src={symptom.icon}
                     alt={symptom.label}
-                    width={48}
-                    height={48}
-                    className="h-12 w-12 object-contain"
+                    width={80}
+                    height={80}
+                    className="h-20 w-20 object-cover"
                   />
 
                   <span className="text-base font-bold">
